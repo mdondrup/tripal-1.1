@@ -1,8 +1,5 @@
 <?php
 
-module_load_include('inc', 'views', 'includes/base');
-module_load_include('inc', 'views', 'includes/handlers');
-
 /**
  * @file
  * Handler to allow joins between records via a linking table
@@ -33,13 +30,14 @@ module_load_include('inc', 'views', 'includes/handlers');
  *  prefixes are added correctly. If the left table is in the drupal schema it should already
  *  be defined by a previous join (or the From clause).
  */
-class views_handler_join_chado_through_linking extends views_join {
+class views_handler_join_chado_through_linking extends views_handler_join_chado_aggregator {
 
   // PHP 4 doesn't call constructors of the base class automatically from a
   // constructor of a derived class. It is your responsibility to propagate
   // the call to constructors upstream where appropriate.
   function construct($table = NULL, $left_table = NULL, $left_field = NULL, $field = NULL, $extra = array(), $type = 'LEFT', $added = NULL) {
     parent::construct($table, $left_table, $left_field, $field, $extra, $type);
+    //dpm('in constructor');
   }
 
   /**
@@ -47,76 +45,37 @@ class views_handler_join_chado_through_linking extends views_join {
    * NOTE: Uses fields in definition as passed in from hook_views_data join definition
    */
   function join($table, &$query) {
-    $output = '';
-    $joins = array();
+    $output = array();
 
-    $joins[] = $this->create_single_join(
-      $query,
-      array(
-        'table' => $this->definition['linking']['table'],
-        'field' => $this->definition['linking']['left_field'],
-        'is_drupal' => FALSE,
-      ),
-      array(
-        'table' => $this->definition['left_table'],
-        'field' => $this->definition['left_field'],
-      ),
-      'LEFT'
+    // Table => Linking
+    $opt = array(
+      'table' => $this->definition['table'],
+      'field' => $this->definition['field'],
+      'left_table' => $this->definition['linking']['table'],
+      'left_field' => $this->definition['linking']['field'],
+      'table_aggregated' => $this->definition['table_aggregated'],
+      'sort' => $this->sort,
+      'filter' => $this->filter,
+      'postgresql_9up' => $this->postgresql_9up,
     );
+    //dpm($opt, 'opt for table => linking in join handler');
+    $output = array_merge($output, $this->aggregate_join($query, $opt));
 
-    $joins[] = $this->create_single_join(
-      $query,
-      array(
-        'table' => $this->definition['table'],
-        'field' => $this->definition['field'],
-        'is_drupal' => $this->definition['table_is_drupal'],
-      ),
-      array(
-        'table' => $this->definition['linking']['table'],
-        'field' => $this->definition['linking']['field'],
-      ),
-      'LEFT'
+    // Linking => Left Table
+    $opt = array(
+      'table' => $this->definition['linking']['table'],
+      'field' => $this->definition['linking']['left_field'],
+      'left_table' => $this->definition['left_table'],
+      'left_field' => $this->definition['left_field'],
+      'table_aggregated' => $this->definition['table_aggregated'],
+      'sort' => $this->sort,
+      'filter' => $this->filter,
+      'postgresql_9up' => $this->postgresql_9up,
     );
+    $output = array_merge($output, $this->aggregate_join($query, $opt));
 
-    $output .= implode("\n", $joins);
-    return $output;
-  }
-
-  /**
-   * Creates SQL for a single join based on parameters
-   */
-  function create_single_join(&$query, $right_spec, $left_spec, $join_type) {
-
-    if ($right_spec['table']) {
-      $right = $query->get_table_info($right_spec['table']);
-      if (!$right['alias']) {
-        $right['alias'] = $right_spec['table'];
-      }
-      $right_field = "$right[alias].$right_spec[field]";
-
-      if ($right_spec['is_drupal']) {
-        $right_table = '{' . $right_spec['table'] . '}';
-      }
-      else {
-        $right_table = $right_spec['table'];
-      }
-    }
-
-    if ($left_spec['table']) {
-      $left = $query->get_table_info($left_spec['table']);
-      if (!$left['alias']) {
-        $left['alias'] = $left_spec['table'];
-        }
-      $left_field = "$left[alias].$left_spec[field]";
-    }
-    else {
-      // This can be used if left_field is a formula or something. It should be used only *very* rarely.
-      $left_field = $this->left_spec['field'];
-    }
-
-    $output = " $join_type JOIN $right_table $right[alias] ON $left_field = $right_field";
-
-    return $output;
+    //dpm($output, 'output in linking join');
+    return implode("\n", $output);
   }
 
 }
