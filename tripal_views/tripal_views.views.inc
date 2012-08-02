@@ -1,7 +1,7 @@
 <?php
 
-include('views/handlers/views_handler_join_chado_through_linking.inc');
 include('views/handlers/views_handler_join_chado_aggregator.inc');
+include('views/handlers/views_handler_join_chado_through_linking.inc');
 include('api/tripal_views.api.inc');
 
 
@@ -89,7 +89,7 @@ function tripal_views_views_handlers() {
         'parent' => 'views_join',
       ),
       'views_handler_join_chado_through_linking' => array(
-        'parent' => 'views_join',
+        'parent' => 'views_handler_join_chado_aggregator',
       ),
 
       // Relationship Handlers
@@ -238,6 +238,9 @@ function tripal_views_views_data() {
 
   // Make sure all chado tables are integrated
   tripal_views_integrate_all_chado_tables();
+
+  // Integrate complex joins between tables
+  tripal_views_integrate_complex_joins();
 
   // Define Global Fields
   // Filter handler that lets the admin say:
@@ -388,6 +391,7 @@ function tripal_views_views_data() {
       $left_field = $join->left_field;
       $base_field = $join->base_field;
       $handler = $join->handler;
+      $args = $join->arguments;
 
       // add join entry
       $data[$base_table]['table']['join'][$left_table] = array(
@@ -396,6 +400,9 @@ function tripal_views_views_data() {
       );
       if ($handler) {
         $data[$base_table]['table']['join'][$left_table]['handler'] = $handler;
+      }
+      if ($args) {
+        $data[$base_table]['table']['join'][$left_table] = array_merge($data[$base_table]['table']['join'][$left_table], unserialize($args));
       }
 
       // check to see if the join table is one that correlates with Drupal nodes
@@ -410,6 +417,8 @@ function tripal_views_views_data() {
       }
     }
   }
+
+  //dpm($data, 'data');
 
   // TEMPORARY: needed to join chado base tables to node linking tables
   // currently done using old-style data arrays

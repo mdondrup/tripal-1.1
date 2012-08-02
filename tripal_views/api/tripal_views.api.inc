@@ -505,3 +505,39 @@ function tripal_views_get_integration_array_for_chado_table($table_name, $base_t
 
   return $defn_array;
 }
+
+/**
+ * Add joins to tripal_views integration that are registered through hook_chado_views_register_joins().
+ *
+ * This is needed to allow more complex joins between tables such as joins that use an
+ * intermediate linking table.
+ */
+function tripal_views_integrate_complex_joins() {
+
+  $joins = module_invoke_all('chado_views_register_joins');
+
+  // Add the joins to tripal_views_join
+  $sql_setup = "SELECT setup_id FROM {tripal_views} WHERE table_name='%s' AND priority=%d";
+  $sql_join = "SELECT * FROM {tripal_views_join} WHERE setup_id=%d AND base_table='%s' AND left_table='%s'";
+  foreach ($joins as $k => $j) {
+    $setup = db_fetch_object(db_query($sql_setup, $j['right_table'], $j['priority']));
+    $record = db_fetch_array(db_query($sql_join, $setup->setup_id, $j['right_table'], $j['left_table']));
+
+    $record['setup_id'] = $setup->setup_id;
+    $record['base_table'] = $j['right_table'];
+    $record['base_field'] = $j['right_field'];
+    $record['left_table'] = $j['left_table'];
+    $record['left_field'] = $j['left_field'];
+    $record['handler'] = $j['handler'];
+    $record['arguments'] = serialize($j['arguments']);
+
+    if ($record['view_join_id']) {
+      // update existing join record
+      drupal_write_record('tripal_views_join', $record, 'view_join_id');
+    }
+    else {
+      // create new join record
+      drupal_write_record('tripal_views_join', $record);
+    }
+  }
+}
