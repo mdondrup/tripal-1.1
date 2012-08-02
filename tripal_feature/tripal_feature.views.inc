@@ -77,6 +77,83 @@ function tripal_feature_views_data()  {
 }
 
 /**
+ * Implements hook_chado_views_register_joins().
+ *
+ * This is used to setup more complex joins between tables. For example, joins between
+ * two tables through a linking table.
+ *
+ * @return
+ *   An array of join descriptions
+ *
+ * A joins description describes the two tables to be joined and any additional
+ * arguments needed by the join handler. The following is an describes the keys used in
+ * a join description
+ * @code
+    $join_desc = array(
+      'left_table' => [name of table to join to],
+      'left_field' => [field in left_table used to join on],
+      'right_table' => [name of table being joined],
+      'right_field' => [field in right_Table used to join on],
+      'handler' => 'views_handler_join_chado_aggregator',
+      'priority' => [the priority of the views integration you want to add this join to],
+      'arguments' => [an array of additional arguments needed by the join handler],
+    );
+ * @endcode
+ */
+function tripal_feature_chado_views_register_joins () {
+  $joins = array();
+
+  // Join Feature --analysisfeature--> analysis
+  $joins[] = array(
+      'left_table' => 'analysis',
+      'left_field' => 'analysis_id',
+      'right_table' => 'feature',
+      'right_field' => 'feature_id',
+      'handler' => 'views_handler_join_chado_through_linking',
+      'priority' => 9,
+      'arguments' => array(
+        'linking' => array(
+            'table' => 'analysisfeature',
+            'left_field' => 'analysis_id',
+            'field' => 'feature_id',
+        ),
+      ),
+  );
+
+  // Join Analysis --analysisfeature--> Feature
+  $joins[] = array(
+      'left_table' => 'feature',
+      'left_field' => 'feature_id',
+      'right_table' => 'analysis',
+      'right_field' => 'analysis_id',
+      'handler' => 'views_handler_join_chado_through_linking',
+      'priority' => 9,
+      'arguments' => array(
+        'linking' => array(
+            'table' => 'analysisfeature',
+            'left_field' => 'feature_id',
+            'field' => 'analysis_id',
+        ),
+      ),
+  );
+/**
+  $joins[] = array(
+      'left_table' => '',
+      'left_field' => '',
+      'right_table' => '',
+      'right_field' => '',
+      'handler' => 'views_handler_join_chado_aggregator',
+      'priority' => 9,
+      'arguments' => array(
+
+      ),
+  );
+*/
+
+  return $joins;
+}
+
+/**
  * Implements hook_views_handlers()
  *
  * Purpose: Register all custom handlers with views
@@ -98,32 +175,6 @@ function tripal_feature_views_handlers() {
     ),
     ),
   );
-}
-
-/**
- * Implementation of hook_views_data_alter().
- */
-function tripal_feature_views_data_alter(&$data) {
-
-  if ( !(is_array($db_url) and array_key_exists('chado', $db_url)) ) {
-
-    // Add featuer relationship to node
-    $data['node']['feature_chado_nid'] = array(
-      'group' => 'Feature',
-      'title' => 'Feature Node',
-      'help' => 'Links Chado Feature Fields/Data to the Nodes in the current View.',
-      'real field' => 'nid',
-      'relationship' => array(
-        'handler' => 'views_handler_relationship',
-        'title' => t('Node => Chado'),
-        'label' => t('Node => Chado'),
-        'real field' => 'nid',
-        'base' => 'chado_feature',
-        'base field' => 'nid'
-      ),
-    );
-  }
-
 }
 
 /**
