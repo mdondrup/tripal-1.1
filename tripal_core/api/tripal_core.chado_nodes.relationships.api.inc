@@ -201,7 +201,7 @@ function chado_add_node_form_relationships(&$form, &$form_state, $details) {
     '#tree' => TRUE,
     '#prefix' => '<div id="tripal-generic-edit-relationships-table">',
     '#suffix' => '</div>',
-    '#theme' => 'chado_node_relationships_form_table'
+    '#theme' => 'chado_add_node_form_relationships_table'
   );
 
   // Add defaults into form_state to be used elsewhere

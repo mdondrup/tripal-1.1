@@ -58,7 +58,7 @@ $options = array(
     'nd_experiment_id' => 1
   ),
 );
-$stock = tripal_core_expand_chado_vars($stock, 'table', 'nd_experiment_stock', $options);
+$stock = chado_expand_var($stock, 'table', 'nd_experiment_stock', $options);
 $nd_experiment_stocks = $stock->nd_experiment_stock;
 if (count($nd_experiment_stocks) > 0) {
   
@@ -83,7 +83,7 @@ if (count($nd_experiment_stocks) > 0) {
         'element' => $stock_pager_id
       ),
     );
-    $nd_experiment = tripal_core_expand_chado_vars($nd_experiment, 'table', 'nd_experiment_genotype', $options);
+    $nd_experiment = chado_expand_var($nd_experiment, 'table', 'nd_experiment_genotype', $options);
     $nd_experiment_genotypes = $nd_experiment->nd_experiment_genotype;
     if ($nd_experiment_genotypes) {
       // for each of the genotypes, add them to our $genotypes array so we can 
@@ -139,7 +139,7 @@ if (count($genotypes) > 0) { ?>
 
     // build the genotype properties
     $options = array('return_array' => 1);
-    $genotype = tripal_core_expand_chado_vars($genotype, 'table', 'genotypeprop', $options);
+    $genotype = chado_expand_var($genotype, 'table', 'genotypeprop', $options);
     $properties = $genotype->genotypeprop;
     $details = '';
     if(count($properties) > 0) {
@@ -160,7 +160,7 @@ if (count($genotypes) > 0) { ?>
         )
       ),
     );
-    $genotype = tripal_core_expand_chado_vars($genotype, 'table', 'feature_genotype', $options);
+    $genotype = chado_expand_var($genotype, 'table', 'feature_genotype', $options);
     $feature_genotypes = $genotype->feature_genotype;
     if (count($feature_genotypes) > 0) {
       $feature_names = '';
@@ -178,7 +178,7 @@ if (count($genotypes) > 0) { ?>
     // expand the nd_experiment object to incldue the nd_experiment_project table
     $values = array('nd_experiment_id' => $nd_experiment_id);
     $options = array('return_array' => 1);
-    $nd_experiment = tripal_core_expand_chado_vars($nd_experiment, 'table', 'nd_experiment_project', $options);
+    $nd_experiment = chado_expand_var($nd_experiment, 'table', 'nd_experiment_project', $options);
     $nd_experiment_projects = $nd_experiment->nd_experiment_project;
     if (count($nd_experiment_projects) > 0) {
       $project_names = '';

@@ -4,7 +4,7 @@ $libraries = array();
 
 // get the libraries that are associated with this publication.  But we only
 // want 25 and we want a pager to let the user cycle between pages of libraries.
-// so we, use the tripal_core_chado_select API function to get the results and
+// so we, use the chado_select_record API function to get the results and
 // generate the pager.  The function is smart enough to know which page the user is
 // on and retrieves the proper set of libraries
 
@@ -20,7 +20,7 @@ $options = array(
   ),
 );
 
-$pub = tripal_core_expand_chado_vars($pub, 'table', 'library_pub', $options);
+$pub = chado_expand_var($pub, 'table', 'library_pub', $options);
 $library_pubs = $pub->library_pub;
 if (count($library_pubs) > 0 ) {
   foreach ($library_pubs as $library_pub) {    

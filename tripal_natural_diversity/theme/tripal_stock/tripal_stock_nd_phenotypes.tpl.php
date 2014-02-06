@@ -35,7 +35,7 @@ $stock = $variables['node']->stock;
 
 // expand the stock object to include the nd_experiment_stock table
 $options = array('return_array' => 1);
-$stock = tripal_core_expand_chado_vars($stock, 'table', 'nd_experiment_stock', $options);
+$stock = chado_expand_var($stock, 'table', 'nd_experiment_stock', $options);
 $nd_experiment_stocks = $stock->nd_experiment_stock;
 
 // Get the experiments to which this stock belongs that have a phenotype
@@ -53,7 +53,7 @@ if (count($nd_experiment_stocks) > 0) {
     
     // get the nd_experiment_phenotype records for this nd_experiment_id
     $values = array('nd_experiment_id' => $nd_experiment_id);
-    $nd_experiment_phenotypes = tripal_core_generate_chado_var('nd_experiment_phenotype', $values, $options);
+    $nd_experiment_phenotypes = chado_generate_var('nd_experiment_phenotype', $values, $options);
     
     // iterate through any nd_experiment_phenotype records and add them to our array
     if ($nd_experiment_phenotypes) {
@@ -114,7 +114,7 @@ if (count($phenotypes) > 0) {?>
     // but the database does not constrain that there only be one project so just in case we get them all
     $projects = array();
     $values = array('nd_experiment_id' => $nd_experiment_stock->nd_experiment_id->nd_experiment_id);
-    $nd_experiment_project = tripal_core_generate_chado_var('nd_experiment_project', $values, $options);
+    $nd_experiment_project = chado_generate_var('nd_experiment_project', $values, $options);
     $nd_experiment_projects = $nd_experiment_project;
     foreach ($nd_experiment_projects as $nd_experiment_project) {
       // we do have a project record, so add it to our $phenotypes array for display below

@@ -4,7 +4,7 @@ $features = array();
 
 // get the features that are associated with this publication.  But we only
 // want 25 and we want a pager to let the user cycle between pages of features.
-// so we, use the tripal_core_chado_select API function to get the results and
+// so we, use the chado_select_record API function to get the results and
 // generate the pager.  The function is smart enough to know which page the user is
 // on and retrieves the proper set of features
 
@@ -20,7 +20,7 @@ $options = array(
   ),
 );
 
-$pub = tripal_core_expand_chado_vars($pub, 'table', 'feature_pub', $options);
+$pub = chado_expand_var($pub, 'table', 'feature_pub', $options);
 $feature_pubs = $pub->feature_pub;
 if (count($feature_pubs) > 0 ) {
   foreach ($feature_pubs as $feature_pub) {    

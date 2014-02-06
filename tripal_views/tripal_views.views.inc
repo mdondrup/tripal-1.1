@@ -235,7 +235,7 @@ function tripal_views_views_data() {
       $base_table = $tvi_row->table_name;
 
       // get the table description
-      $table_desc = tripal_core_get_chado_table_schema($base_table);
+      $table_desc = chado_get_schema($base_table);
 
       $fields = $table_desc['fields'];
       if (!is_array($fields)) {
@@ -342,7 +342,7 @@ function tripal_views_views_data() {
 
         // warn if deprecated method of relationship addition was used (ie: through handlers)
         if (isset($data[$base_table][$base_field]['relationship'])) {
-          tripal_core_report_error('tripal_views', TRIPAL_NOTICE,
+          tripal_report_error('tripal_views', TRIPAL_NOTICE,
             'DEPRECATED: Currently using tripal_views_handlers to store relationship for %base => %left when you should be using tripal_views_joins.',
             array('%base' => $base_table, '%left' => $left_table));
         }
@@ -542,7 +542,7 @@ function tripal_views_views_data_alter(&$data) {
       $base_title = ucwords(str_replace('_', ' ', $base_table));
 
       // add in joins to the node tables if the Chado schema is local
-      if (tripal_core_chado_schema_exists()) {
+      if (chado_is_local()) {
         // if a node linking table exists then add in the joins
         if (db_table_exists($linker_table)) {
 

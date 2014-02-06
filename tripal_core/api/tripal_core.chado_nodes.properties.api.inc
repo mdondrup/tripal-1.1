@@ -58,7 +58,7 @@
 
       // Add all properties
       // Existing _property links will be cleared and then re-added
-      tripal_api_chado_node_properties_form_update_properties(
+      tripal_api_chado_add_node_form_properties_update_properties(
         $node,                // the node object passed in via hook_insert()
         'example_property',   // the name of the _property linking table
         'example',            // the name of the base chado table for the node
@@ -80,7 +80,7 @@
 
       // Update all properties
       // Existing _property links will be cleared and then re-added
-      tripal_api_chado_node_properties_form_update_properties(
+      tripal_api_chado_add_node_form_properties_update_properties(
         $node,                // the node object passed in via hook_insert()
         'example_property',   // the name of the _property linking table
         'example',            // the name of the base chado table for the node
@@ -521,7 +521,7 @@ function chado_add_node_form_properties(&$form, &$form_state, $details) {
     '#tree' => TRUE,
     '#prefix' => '<div id="tripal-generic-edit-properties-table">',
     '#suffix' => '</div>',
-    '#theme' => 'chado_node_properties_form_table'
+    '#theme' => 'chado_add_node_form_properties_table'
   );
 
   // Add defaults into form_state to be used elsewhere

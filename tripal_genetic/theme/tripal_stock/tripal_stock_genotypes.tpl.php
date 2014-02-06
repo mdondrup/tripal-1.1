@@ -26,7 +26,7 @@ $options = array(
     'element' => $stock_pager_id
   ),
 );
-$stock = tripal_core_expand_chado_vars($stock, 'table', 'stock_genotype', $options); 
+$stock = chado_expand_var($stock, 'table', 'stock_genotype', $options); 
 $stock_genotypes = $stock->stock_genotype;
 
 // the total number of records for the paged query is stored in a session variable
@@ -52,7 +52,7 @@ if (count($stock_genotypes) > 0) {?>
     
     // get the genotype properties
     $options = array('return_array' => 1);
-    $genotype = tripal_core_expand_chado_vars($genotype, 'table', 'genotypeprop', $options);
+    $genotype = chado_expand_var($genotype, 'table', 'genotypeprop', $options);
     $properties = $genotype->genotypeprop; 
     
     // add in markers associated with this genotype if any
@@ -64,7 +64,7 @@ if (count($stock_genotypes) > 0) {?>
         )
       ),
     );
-    $genotype = tripal_core_expand_chado_vars($genotype, 'table', 'feature_genotype', $options);
+    $genotype = chado_expand_var($genotype, 'table', 'feature_genotype', $options);
     $feature_genotypes = $genotype->feature_genotype; 
     
     // show the uniquename for the genotype unless a name exists

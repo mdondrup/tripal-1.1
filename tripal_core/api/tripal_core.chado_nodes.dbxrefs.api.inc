@@ -160,7 +160,7 @@ function chado_add_node_form_dbxrefs(&$form, &$form_state, $details) {
     '#tree' => TRUE,
     '#prefix' => '<div id="tripal-generic-edit-addtl_dbxrefs-table">',
     '#suffix' => '</div>',
-    '#theme' => 'chado_node_additional_dbxrefs_form_table'
+    '#theme' => 'chado_add_node_form_dbxrefs_table'
   );
 
   /* DBxrefs can come to us in two ways:

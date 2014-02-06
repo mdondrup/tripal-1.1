@@ -196,7 +196,7 @@ function drush_tripal_core_set_user($username) {
  *
  * NOTE: The following code is executed when drush 'trpjob-run' or 'drush tripal-launch-jobs' is called
  */
-function drush_tripal_core_tripal_jobs_launch($username) {
+function drush_tripal_core_tripal_launch_job($username) {
   $parallel = drush_get_option('parallel');
   $job_id = drush_get_option('job_id');
 
@@ -221,11 +221,11 @@ function drush_tripal_core_tripal_jobs_launch($username) {
  *
  * NOTE: The following code is executed when drush 'trpjob-run' or 'drush tripal-launch-jobs' is called
  */
-function drush_tripal_core_tripal_jobs_rerun($username, $job_id) {
+function drush_tripal_core_tripal_rerun_job($username, $job_id) {
 
   drush_tripal_core_set_user($username);
   $new_job_id = tripal_rerun_job($job_id, FALSE);
-  drush_tripal_core_tripal_jobs_launch($username, $new_job_id);
+  drush_tripal_core_tripal_launch_job($username, $new_job_id);
 
 }
 
@@ -270,7 +270,7 @@ function drush_tripal_core_tripal_jobs_current() {
  *
  * Note: Either $mview_id OR $table_name is required
  */
-function drush_tripal_core_tripal_update_mview() {
+function drush_tripal_core_tripal_populate_mview() {
   $mview_id = drush_get_option('mview_id');
   $table_name = drush_get_option('table_name');
 

@@ -398,7 +398,7 @@ function tripal_core_menu() {
 
   // Relationshi API autocomplete callback
   $items['tripal_ajax/relationship_nodeform/%/%/name_to_id'] = array(
-    'page callback' => 'chado_node_relationships_name_to_id_callback',
+    'page callback' => 'chado_add_node_form_relationships_name_to_id_callback',
     'page arguments' => array(2,3),
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK
@@ -460,17 +460,17 @@ function tripal_core_theme($existing, $type, $theme, $path) {
     // Chado Node API Themes
     // --------------------------------
     // Properties Node Form
-    'chado_node_properties_form_table' => array(
+    'chado_add_node_form_properties_table' => array(
       'function' => 'theme_chado_add_node_form_properties',
       'render element' => 'element',
     ),
     // Additional Dbxrefs Nore Form
-    'chado_node_additional_dbxrefs_form_table' => array(
+    'chado_add_node_form_dbxrefs_table' => array(
       'function' => 'theme_chado_add_node_form_dbxrefs_table',
       'render element' => 'element',
     ),
     // Relationships Nore Form
-    'chado_node_relationships_form_table' => array(
+    'chado_add_node_form_relationships_table' => array(
       'function' => 'theme_chado_add_node_form_relationships_tables',
       'render element' => 'element',
     ),

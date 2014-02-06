@@ -19,7 +19,7 @@ $so_terms = explode(' ', $allowed_types);
 
 // get the feature_id's of the feature that belong to this organism.  But we only
 // want 25 and we want a pager to let the user cycle between pages of features.
-// so we, use the tripal_core_chado_select API function to get the results and
+// so we, use the chado_select_record API function to get the results and
 // generate the pager.  The function is smart enough to know which page the user is
 // on and retrieves the proper set of features
 $element = 0;        // an index to specify the pager if more than one is on the page
@@ -38,7 +38,7 @@ $options = array(
    ),
   'order_by' => array('name' => 'ASC'),
 );
-$results = tripal_core_chado_select('feature', $columns, $values, $options);
+$results = chado_select_record('feature', $columns, $values, $options);
 
 // now that we have all of the feature IDs, we want to expand each one so that we
 // have all of the neccessary values, including the node ID, if one exists, and the
@@ -51,7 +51,7 @@ foreach ($results as $result) {
       'type_id' => 1
     )
   );
-  $features[] = tripal_core_generate_chado_var('feature', $values, $options);
+  $features[] = chado_generate_var('feature', $values, $options);
 }
 
 // only show this block if it is enabled
