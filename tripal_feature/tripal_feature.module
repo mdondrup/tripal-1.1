@@ -612,7 +612,7 @@ function chado_feature_add_synonyms($synonyms, $feature_id) {
   if (!chado_query($feature_syn_dsql, $feature_id)) {
     $error .= "Could not remove synonyms from feature. ";
   }
-
+	// teste de commit
   // return if we don't have any synonmys to add
   if (!$synonyms) {
     return;
