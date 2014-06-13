@@ -23,10 +23,10 @@ require_once "includes/seq_extract.inc";
 require_once "api/tripal_feature.api.inc";
 
 require_once "includes/tripal_feature-delete.inc";
-//require_once "includes/tripal_feature-secondary_tables.inc";
-//require_once "includes/tripal_feature-properties.inc";
-//require_once "includes/tripal_feature-relationships.inc";
-//require_once "includes/tripal_feature-db_references.inc";
+require_once "includes/tripal_feature-secondary_tables.inc";
+require_once "includes/tripal_feature-properties.inc";
+require_once "includes/tripal_feature-relationships.inc";
+require_once "includes/tripal_feature-db_references.inc";
 
 
 /**
@@ -88,6 +88,7 @@ function tripal_feature_node_info() {
 
   $nodes['chado_feature'] = array(
     'name' => t('Feature'),
+    	
     'module' => 'chado_feature',
     'description' => t('A feature from the chado database'),
     'has_title' => FALSE,
@@ -449,6 +450,8 @@ function chado_feature_insert($node) {
     ),
     'name' => $node->feature_type
   );
+	//$requetetest=" UPDATE chado.feature set name='oligle1' where feature_id=73585;";
+	//chado_query($requetetest);
   $type = tripal_core_chado_select('cvterm', array('cvterm_id'), $values);
   $values = array(
     'organism_id' => $node->organism_id,
@@ -472,7 +475,7 @@ function chado_feature_insert($node) {
         array('%values' => print_r($values, TRUE)), WATCHDOG_WARNING);
     }
   }
-
+	
   // now get the newly added record
   $values = array(
     'organism_id' => $node->organism_id,
@@ -480,6 +483,12 @@ function chado_feature_insert($node) {
     'type_id' => $type[0]->cvterm_id,
   );
   $feature = tripal_core_chado_select('feature', array('feature_id'), $values);
+
+
+
+
+
+
 
   // add the genbank accession and synonyms
   chado_feature_add_synonyms($node->synonyms, $feature[0]->feature_id);
@@ -494,6 +503,24 @@ function chado_feature_insert($node) {
     $sql = "INSERT INTO {chado_feature} (nid, vid, feature_id, sync_date) ".
            "VALUES (%d, %d, %d, " . time() . ")";
       db_query($sql, $node->nid, $node->vid, $feature[0]->feature_id);
+
+
+	////////////////////
+$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=".$feature[0]->feature_id." ;"));
+	if ($verif>0) {
+		if (isset($node->desc)){
+			$requetetest=" UPDATE chado.featureprop set value= '%s' where feature_id='%s' and type_id=2341;";
+   		 	chado_query($requetetest,$node->desc,$feature[0]->feature_id);
+		}
+		 
+	}	
+	
+	else{ 	
+		if (isset($node->desc)){
+    	          	$requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value) values ('%d','2341','%s');";
+  		  	chado_query($requetetest,$feature[0]->feature_id,$node->desc);
+		}
+	}
   }
 }
 
@@ -525,13 +552,22 @@ function chado_feature_update($node) {
 
   $feature_id = chado_get_id_for_node('feature', $node) ;
 
+
+
+
+////
+/*
+  $requetetest=" UPDATE chado.feature set name='oliginsert' where feature_id=73585;";
+  chado_query($requetetest);
+*/
+ /////
   if (sizeof($type) > 0) {
     $match = array(
       'feature_id' => $feature_id,
     );
     $values = array(
       'organism_id' => $node->organism_id,
-      'name' => $node->fname,
+      'name' => $node->fname,      	
       'uniquename' => $node->uniquename,
       'residues' => $residues,
       'seqlen' => drupal_strlen($residues),
@@ -541,6 +577,25 @@ function chado_feature_update($node) {
     );
     $options = array('return_record' => TRUE);
     $status = tripal_core_chado_update('feature', $match, $values, $options);
+// Ajout de la description
+	//si description vide faire un insert into
+	//else faire update
+	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=$feature_id ;"));
+	if ($verif>0) {
+		if (isset($node->desc)){
+			$requetetest=" UPDATE chado.featureprop set value= '%s' where feature_id='%s' and type_id=2341;";
+   		 	chado_query($requetetest,$node->desc,$feature_id);
+		}
+		 
+	}	
+	
+	else{ 	
+		if (isset($node->desc)){
+    	          	$requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value) values ('%d','2341','%s');";
+  		  	chado_query($requetetest,$feature_id,$node->desc);
+		}
+	}
+
 
     // add the genbank synonyms
     chado_feature_add_synonyms($node->synonyms, $feature_id);
@@ -725,7 +780,7 @@ function chado_feature_form($node, $param) {
 
   $type = node_get_types('type', $node);
   $form = array();
-
+  
   $feature = $node->feature;
 
   // add the residues to the feature object
@@ -735,8 +790,8 @@ function chado_feature_form($node, $param) {
   // from an error.  Otherwise try to find synonyms from the database
   $synonyms = $node->synonyms;
   $feature = tripal_core_expand_chado_vars($feature, 'table', 'feature_synonym');
-  $feature_synonyms = $feature->feature_synonym;
-  if (!$synonyms) {
+ $feature_synonyms = $feature->feature_synonym;
+ if (!$synonyms) {
     if (!is_array($feature_synonyms)) {
       $synonyms = $feature_synonyms->synonym_id->name;
     }
@@ -755,11 +810,17 @@ function chado_feature_form($node, $param) {
     '#type' => 'value',
     '#value' => $feature
   );
+  //Descripion
+  $form['desc'] = array(
+    '#type' => 'value',
+    '#value' => $desc
+  );		
   // This field is read when previewing a node
   $form['synonyms'] = array(
     '#type' => 'value',
     '#value' => $synonyms
   );
+  
   // This field is read when previewing a node
   $form['analyses'] = array(
     '#type' => 'value',
@@ -784,6 +845,14 @@ function chado_feature_form($node, $param) {
     '#required' => TRUE,
     '#default_value' => $node->title,
     '#description' => t('The title must be a unique identifier for this feature.  It is recommended to use a combination of uniquename, organism and feature type in the title as this is guranteed to be unique.'),
+    '#maxlength' => 255
+  );
+$form['title']= array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#required' => TRUE,
+    '#default_value' => $node->title,
+    '#description' => t('Enter a title for the feature '),
     '#maxlength' => 255
   );
 
@@ -818,6 +887,34 @@ function chado_feature_form($node, $param) {
    '#default_value' => $feature->type_id->name,
    '#autocomplete_path' => "admin/tripal/tripal_cv/cvterm/auto_name/$cv_id",
   );
+	//  Get the description
+
+	$requete="Select f.value from chado.featureprop as f left join chado.feature fm".
+		" on f.feature_id=fm.feature_id join chado.cvterm as t on f.type_id=t.cvterm_id ".
+		"where t.name='Note' and f.feature_id= %d";
+  
+	$variablenulle = chado_query($requete,$feature->feature_id);
+
+ 	$qwerty = db_result($variablenulle);
+	//echo $qwerty;	
+	//echo $feature->test;	
+
+
+// Form for Description
+  	
+  $form['desc']= array(
+    '#type' => 'textfield',
+    '#title' => t('Description'),
+    '#required' => FALSE,
+    '#default_value' => $qwerty,
+    '#description' => t('Description'),
+  );	
+
+	 
+
+
+
+  
 
   // get the list of organisms
   $sql = "SELECT * FROM {Organism} ORDER BY genus, species";
@@ -862,6 +959,7 @@ function chado_feature_form($node, $param) {
     '#default_value' => $feature->residues,
     '#description' => t('Enter the nucelotide sequences for this feature'),
   );
+ 
 
   $checked = '';
   if ($feature->is_obsolete == 't') {
