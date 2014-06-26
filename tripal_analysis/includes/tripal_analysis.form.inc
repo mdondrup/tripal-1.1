@@ -201,7 +201,7 @@ function chado_analysis_form(&$node, $form_state = NULL) {
   );
   
   // add in the properties from the analysisprop table
-  $num_properties += chado_analysis_node_form_add_analysisprop_table_props($form, $form_state, $analysis_id, $d_properties, $d_removed);
+  //$num_properties += chado_analysis_node_form_add_analysisprop_table_props($form, $form_state, $analysis_id, $d_properties, $d_removed);
   
   // add in any new properties that have been added by the user through an AHAH callback
   $num_new = chado_analysis_node_form_add_new_props($form, $form_state, $d_properties, $d_removed);
@@ -330,7 +330,7 @@ function chado_analysis_node_form_add_new_empty_props(&$form, $properties_select
   ),
   );
   $form['properties']['table']['new']["new_value"] = array(
-    '#type'          => 'textarea',
+    '#type'          => 'textfield',
     '#default_value' => '',
     '#cols'          => 5,
     '#rows'          => $rows,
@@ -395,7 +395,7 @@ function chado_analysis_node_form_add_new_props(&$form, $form_state, &$d_propert
           '#value'         => $cvterm[0]->name
         );
         $form['properties']['table']['new'][$new_id][$rank]["new_value-$new_id-$rank"] = array(
-          '#type'          => 'textarea',
+          '#type'          => 'textfield',
           '#default_value' => $value,
           '#cols'          => 50,
           '#rows'          => $rows,
@@ -446,7 +446,7 @@ function chado_analysis_node_form_add_new_props(&$form, $form_state, &$d_propert
       '#value'         => $cvterm[0]->name
     );
     $form['properties']['table']['new'][$new_id][$rank]["new_value-$new_id-$rank"] = array(
-      '#type'          => 'textarea',
+      '#type'          => 'textfield',
       '#default_value' => $new_value,
       '#cols'          => 50,
       '#rows'          => $rows,

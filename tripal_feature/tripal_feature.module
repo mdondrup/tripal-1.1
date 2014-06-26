@@ -21,7 +21,7 @@ require_once "includes/gff_loader.inc";
 require_once "includes/seq_extract.inc";
 
 require_once "api/tripal_feature.api.inc";
-
+//require_once "includes/tripal_analysis.form.inc";
 require_once "includes/tripal_feature-delete.inc";
 require_once "includes/tripal_feature-secondary_tables.inc";
 require_once "includes/tripal_feature-properties.inc";
@@ -37,6 +37,14 @@ function tripal_feature_init() {
 
   drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/tripal_feature.js');
   drupal_add_css(drupal_get_path('theme', 'tripal') . '/css/tripal_feature.css');
+
+// add the jgCharts.js
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/jgcharts/jgcharts.js');
+
+  // add the jsTree JS and CSS
+  drupal_add_css(drupal_get_path('theme', 'tripal') . '/js/jsTree/source/tree_component.css');
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/jsTree/source/_lib.js');
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/jsTree/source/tree_component.js');
 }
 
 /**
@@ -153,6 +161,9 @@ function chado_feature_access($op, $node, $account) {
  *
  * @ingroup tripal_feature
  */
+
+
+
 function tripal_feature_menu() {
   $items = array();
 
@@ -171,6 +182,13 @@ function tripal_feature_menu() {
     'access arguments' => array('access chado_feature content'),
     'type' => MENU_CALLBACK,
   );
+  $items['chrs/auto'] = array(
+      'title' => 'Autocomplete for chromosone',
+      'page callback' => 'chrs_autocomplete',
+      
+      'access arguments' => array('access chado_feature content'),  //or whatever permission makes sense
+      'type' => MENU_CALLBACK,
+    );
   
   // the administative settings menu
   $items['admin/tripal/tripal_feature'] = array(
@@ -233,6 +251,7 @@ function tripal_feature_menu() {
     'access arguments' => array('access chado_feature content'),
     'type' => MENU_NORMAL_ITEM,
   );
+  
 
   return $items;
 }
@@ -506,23 +525,62 @@ function chado_feature_insert($node) {
 
 
 	////////////////////
-$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=".$feature[0]->feature_id." ;"));
-	if ($verif>0) {
-		if (isset($node->desc)){
-			$requetetest=" UPDATE chado.featureprop set value= '%s' where feature_id='%s' and type_id=2341;";
-   		 	chado_query($requetetest,$node->desc,$feature[0]->feature_id);
-		}
-		 
-	}	
+	if (isset($node->description_id)){
+	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=".$feature[0]->feature_id." and   type_id= $node->description_id;"));
+	  if ($verif>0) {
+	    if (isset($node->desc)){
+	      $requetetest=" UPDATE chado.featureprop set value= '%s' ".
+			    "where feature_id='%s' and type_id= '%d';";
+   	      chado_query($requetetest,$node->desc,$feature[0]->feature_id,$node->description_id);
+	     }		 
+	  }	
+	    else{ 	
+	     if (isset($node->desc)){
+    	        $requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value)".
+			     " values ('%d','%d','%s');";	
+  		chado_query($requetetest,$feature[0]->feature_id,$node->description_id,$node->desc);
+	     }
+	 }
+       }
 	
-	else{ 	
-		if (isset($node->desc)){
-    	          	$requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value) values ('%d','2341','%s');";
-  		  	chado_query($requetetest,$feature[0]->feature_id,$node->desc);
-		}
+      // Ajout de la localisation
+   $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature[0]->feature_id "));
+   if ($verif>0) {
+     if (isset($node->locmin)){
+         $locmax=$node->locmin + $values['seqlen'] - 1 ;
+         $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
+   	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature[0]->feature_id);
+     }		 
+   }	
+   else{if (isset($node->locmin)){
+          $locmax=$node->locmin + $values['seqlen'] - 1;
+          $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%s');";
+	  chado_query($requetetest,$feature[0]->feature_id,$node->sourceloc,$node->locmin -1,$locmax);
 	}
+   }	
+
+  }//nodecheck
+}//function
+/*
+*
+*
+*
+*/
+function chrs_autocomplete($string='') {
+  $matches = array();
+  //search table `name` for cities that begin with the letters the user enters in the form
+ $sql="SELECT feature_id,name FROM chado.feature WHERE lower(name) LIKE lower('%s%%') order by name limit 10";
+ $result = chado_query($sql,$string);
+  //$result = db_query_range("SELECT name FROM chado.feature WHERE name LIKE '%s%%'", $string, 0, 10);
+  // add matches to $matches
+  while ($data = db_fetch_object($result)) {
+    $matches[$data->name] = check_plain($data->name);
   }
+  // return for JS
+   return drupal_json($matches);
+
 }
+
 
 /**
  *
@@ -552,15 +610,6 @@ function chado_feature_update($node) {
 
   $feature_id = chado_get_id_for_node('feature', $node) ;
 
-
-
-
-////
-/*
-  $requetetest=" UPDATE chado.feature set name='oliginsert' where feature_id=73585;";
-  chado_query($requetetest);
-*/
- /////
   if (sizeof($type) > 0) {
     $match = array(
       'feature_id' => $feature_id,
@@ -577,24 +626,42 @@ function chado_feature_update($node) {
     );
     $options = array('return_record' => TRUE);
     $status = tripal_core_chado_update('feature', $match, $values, $options);
+
+
 // Ajout de la description
-	//si description vide faire un insert into
-	//else faire update
-	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=$feature_id ;"));
+  if ($node->description_id != ""){
+	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=$feature_id and  type_id= $node->description_id;"));
 	if ($verif>0) {
 		if (isset($node->desc)){
-			$requetetest=" UPDATE chado.featureprop set value= '%s' where feature_id='%s' and type_id=2341;";
-   		 	chado_query($requetetest,$node->desc,$feature_id);
-		}
-		 
+			$requetetest=" UPDATE chado.featureprop set value= '%s' where feature_id='%s' and type_id='%d'";
+   		 	chado_query($requetetest,$node->desc,$feature_id,$node->description_id);
+		}		 
 	}	
-	
-	else{ 	
-		if (isset($node->desc)){
-    	          	$requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value) values ('%d','2341','%s');";
-  		  	chado_query($requetetest,$feature_id,$node->desc);
-		}
+	else{if (isset($node->desc)){
+    	     $requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value) values ('%d','%d','%s');";
+             chado_query($requetetest,$feature_id,$node->description_id,$node->desc);
+	     }
 	}
+  }
+
+// Ajout de la localisation
+    
+    $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature_id "));
+    if ($verif>0) {
+      if (isset($node->locmin)){
+         $locmax=$node->locmin + $values['seqlen'] -2;
+	 $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
+   	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature_id);
+         
+      }		 
+    }	
+    else{if (isset($node->locmin)){
+         $locmax=$node->locmin + $values['seqlen'] -2 ;
+    	 $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%d');";
+  	 chado_query($requetetest,$feature_id,$node->sourceloc,$node->locmin -1,$locmax);
+        }
+   }
+  	
 
 
     // add the genbank synonyms
@@ -810,11 +877,13 @@ function chado_feature_form($node, $param) {
     '#type' => 'value',
     '#value' => $feature
   );
+	/*
   //Descripion
   $form['desc'] = array(
     '#type' => 'value',
     '#value' => $desc
-  );		
+  );
+	*/		
   // This field is read when previewing a node
   $form['synonyms'] = array(
     '#type' => 'value',
@@ -838,7 +907,18 @@ function chado_feature_form($node, $param) {
     '#type' => 'value',
     '#value' => $feature->feature_id,
   );
+  /*$form_state=Null;
+// on AHAH callbacks we want to keep a list of all the properties that have been removed
+  // we'll store this info in a hidden field and retrieve it here
+  $d_removed = $form_state['values']['removed'];
 
+  // get the number of new fields that have been aded via AHAH callbacks
+  $num_new = $form_state['values']['num_new'] ? $form_state['values']['num_new'] : 0;
+
+  // initialze default properties array. This is where we store the property defaults
+  $d_properties = array();
+*/
+///////////
   $form['title']= array(
     '#type' => 'textfield',
     '#title' => t('Title'),
@@ -887,17 +967,49 @@ $form['title']= array(
    '#default_value' => $feature->type_id->name,
    '#autocomplete_path' => "admin/tripal/tripal_cv/cvterm/auto_name/$cv_id",
   );
-	//  Get the description
 
-	$requete="Select f.value from chado.featureprop as f left join chado.feature fm".
+// get the chromosone
+ 
+  $form['sourceloc'] = array(
+   '#title'       => t('Source Feature'),
+   '#type'        => 'textfield',
+   '#description' => t("Choose the Source of the feature."),
+   '#required'    => FALSE,   
+   '#autocomplete_path' => "chrs/auto",
+  );
+
+
+
+// get the list of CVTerm
+
+  $sql = "select cvterm_id,name from chado.cvterm where cvterm_id in (select distinct type_id from chado.featureprop) ;";
+  $Descriptionsql = chado_query($sql);
+  $typedesc = array();
+  $typedesc[''] = '';
+  while ($type = db_fetch_object($Descriptionsql)) {
+    $typedesc[$type->cvterm_id] = "$type->name";
+  }
+
+
+  $form['description_id'] = array(
+    '#title'       => t('Value Description'),
+    '#type'        => t('select'),
+    '#description' => t("Choose the kind of description for this feature "),
+    '#required'    => FALSE,
+    
+    '#options'     => $typedesc,
+ );
+
+
+//  Get the description
+/*
+   $requete="Select f.value from chado.featureprop as f left join chado.feature fm".
 		" on f.feature_id=fm.feature_id join chado.cvterm as t on f.type_id=t.cvterm_id ".
-		"where t.name='Note' and f.feature_id= %d";
+		"where f.feature_id= %d";
   
-	$variablenulle = chado_query($requete,$feature->feature_id);
-
- 	$qwerty = db_result($variablenulle);
-	//echo $qwerty;	
-	//echo $feature->test;	
+   $variablenulle = chado_query($requete,$feature->feature_id);
+   $qwerty = db_result($variablenulle);
+*/	
 
 
 // Form for Description
@@ -910,10 +1022,38 @@ $form['title']= array(
     '#description' => t('Description'),
   );	
 
+//  Get the localisation
+
+$requete1="Select fmin,fmax from chado.featureloc where feature_id= %d";
+  
+   $variablenulle1 = chado_query($requete1,$feature->feature_id);
+
+
+while ($row = db_fetch_object($variablenulle1)){
+		$fmin=$row->fmin;
+		$fmax=$row->fmax;
+	}
+
+
+
+$form['locmin']= array(
+    '#type' => 'textfield',
+    '#title' => t('Localisation MIN'),
+    '#required' => FALSE,
+    '#default_value' => $fmin +1,
+    '#description' => t('Saisir la localisation minimale'),
+  );	
+
 	 
-
-
-
+/*
+$form['locmax']= array(
+    '#type' => 'textfield',
+    '#title' => t('Localisation MAX'),
+    '#required' => FALSE,
+    '#default_value' => $fmax,
+    '#description' => t('Saisir la localisation maximale'),
+  );	
+*/
   
 
   // get the list of organisms
@@ -948,6 +1088,7 @@ $form['title']= array(
     '#type' => 'textarea',
     '#title' => t('Synonyms'),
     '#required' => FALSE,
+    '#wysiwyg' =>FALSE, 
     '#default_value' => $syn_text,
     '#description' => t('Enter alternate names (synonmys) for this feature to help in searching and identification. You may enter as many alternate names as needed each on different lines.'),
   );
@@ -956,10 +1097,51 @@ $form['title']= array(
     '#type' => 'textarea',
     '#title' => t('Residues'),
     '#required' => FALSE,
+    '#wysiwyg' =>FALSE, 
     '#default_value' => $feature->residues,
     '#description' => t('Enter the nucelotide sequences for this feature'),
   );
- 
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// get the analysis properties
+/* 
+  $properties_select = array();
+  $properties_select[] = 'Select a Property';
+  $properties_list = array();
+  $sql = "
+    select cvterm_id,name from chado.cvterm where cvterm_id in (select distinct type_id from chado.featureprop) ;
+  ";
+  $prop_types = chado_query($sql);
+  while ($prop = db_fetch_object($prop_types)) {
+  	$properties_select[$prop->cvterm_id] = $prop->name;
+  	$properties_list[$prop->cvterm_id] = $prop;
+  }
+
+
+  $form['properties'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Properties Details'),
+    '#description' => t('Description of properties'),
+     '#process'  =>array('form_expand_ahah'),
+     );
+
+
+$form['properties']['table']['field1']= array(
+    '#type'          => 'select',
+    '#options'       => $properties_select,    
+  );
+ $form['properties']['table']['field2'] = array(
+    '#type' => 'textfield',
+    '#value' =>  '',    
+  );
+$form['properties']['table']['field3'] = array(
+    '#type'         => 'image_button',      
+    '#value'        => t('Add'),
+    '#src'          => drupal_get_path('theme', 'tripal') . '/images/add.png',
+    
+    '#attributes' => array('onClick' => 'return False;'),
+    );
+*/
 
   $checked = '';
   if ($feature->is_obsolete == 't') {
@@ -974,11 +1156,17 @@ $form['title']= array(
   );
   return $form;
 }
-/**
+/*
  *
  *
  * @ingroup tripal_feature
- */
+ *
+
+
+
+/*
+/*
+*/
 function chado_feature_validate($node) {
   $result = 0;
   
