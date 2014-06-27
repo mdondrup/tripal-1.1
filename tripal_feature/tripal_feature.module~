@@ -1,0 +1,2555 @@
+<?php
+
+/**
+ * @file
+ * @todo Add file header description
+ */
+
+/**
+ * @defgroup tripal_feature Feature Module
+ * @ingroup tripal_modules
+ * @{
+ * Provides functions for managing chado features including creating details pages for each feature
+ * @}
+ */
+
+require_once "includes/tripal_feature.admin.inc";
+require_once "includes/syncFeatures.inc";
+require_once "includes/indexFeatures.inc";
+require_once "includes/fasta_loader.inc";
+require_once "includes/gff_loader.inc";
+require_once "includes/seq_extract.inc";
+
+require_once "api/tripal_feature.api.inc";
+//require_once "includes/tripal_analysis.form.inc";
+require_once "includes/tripal_feature-delete.inc";
+require_once "includes/tripal_feature-secondary_tables.inc";
+require_once "includes/tripal_feature-properties.inc";
+require_once "includes/tripal_feature-relationships.inc";
+require_once "includes/tripal_feature-db_references.inc";
+
+
+/**
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_init() {
+
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/tripal_feature.js');
+  drupal_add_css(drupal_get_path('theme', 'tripal') . '/css/tripal_feature.css');
+
+// add the jgCharts.js
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/jgcharts/jgcharts.js');
+
+  // add the jsTree JS and CSS
+  drupal_add_css(drupal_get_path('theme', 'tripal') . '/js/jsTree/source/tree_component.css');
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/jsTree/source/_lib.js');
+  drupal_add_js(drupal_get_path('theme', 'tripal') . '/js/jsTree/source/tree_component.js');
+}
+
+/**
+ * Implements hook_views_api()
+ *
+ * Purpose: Essentially this hook tells drupal that there is views support for
+ *  for this module which then includes tripal_db.views.inc where all the
+ *  views integration code is
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_views_api() {
+  return array(
+    'api' => 2.0,
+  );
+}
+
+/**
+ * Display help and module information
+ *
+ * @param
+ *   path which path of the site we're displaying help
+ * @param
+ *   arg array that holds the current path as would be returned from arg() function
+ *
+ * @return
+ *   help text for the path
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+  case "admin/help#tripal_feature":
+    $output='<p>' . t("Displays links to nodes created on this date") . '</p>';
+    break;
+  }
+  return $output;
+}
+
+/**
+ *  Provide information to drupal about the node types that we're creating
+ *  in this module
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_node_info() {
+  $nodes = array();
+
+  $nodes['chado_feature'] = array(
+    'name' => t('Feature'),
+    	
+    'module' => 'chado_feature',
+    'description' => t('A feature from the chado database'),
+    'has_title' => FALSE,
+    'title_label' => t('Feature'),
+    'has_body' => FALSE,
+    'body_label' => t('Feature Description'),
+    'locked' => TRUE
+  );
+  return $nodes;
+}
+
+/**
+ *  Set the permission types that the chado module uses.  Essentially we
+ *  want permissionis that protect creation, editing and deleting of chado
+ *  data objects
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_perm() {
+  return array(
+    'access chado_feature content',
+    'create chado_feature content',
+    'delete chado_feature content',
+    'edit chado_feature content',
+    'administer tripal features',
+  );
+}
+
+/**
+ *  Set the permission types that the module uses.
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_access($op, $node, $account) {
+  if ($op == 'create') {
+    if (!user_access('create chado_feature content', $account)) {
+      return FALSE;
+      }
+  }
+
+  if ($op == 'update') {
+    if (!user_access('edit chado_feature content', $account)) {
+      return FALSE;
+    }
+  }
+  if ($op == 'delete') {
+    if (!user_access('delete chado_feature content', $account)) {
+      return FALSE;
+    }
+  }
+  if ($op == 'view') {
+    if (!user_access('access chado_feature content', $account)) {
+      return FALSE;
+    }
+  }
+  return NULL;
+}
+/**
+ *  Menu items are automatically added for the new node types created
+ *  by this module to the 'Create Content' Navigation menu item.  This function
+ *  adds more menu items needed for this module.
+ *
+ * @ingroup tripal_feature
+ */
+
+
+
+function tripal_feature_menu() {
+  $items = array();
+
+  // the administative settings menu
+  $items['find/sequences'] = array(
+    'title' => 'Sequence Retrieval',
+    'description' => 'Download a file of sequences',
+    'page callback' => 'tripal_feature_seq_extract_page',
+    'access arguments' => array('access chado_feature content'),
+    'type' => MENU_CALLBACK,
+  );
+  
+  $items['find/sequences/ajax'] = array(
+    'title' => 'Sequence Retrieval',
+    'page callback' => 'tripal_feature_seq_extract_form_ahah_update',
+    'access arguments' => array('access chado_feature content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['chrs/auto'] = array(
+      'title' => 'Autocomplete for chromosone',
+      'page callback' => 'chrs_autocomplete',
+      
+      'access arguments' => array('access chado_feature content'),  //or whatever permission makes sense
+      'type' => MENU_CALLBACK,
+    );
+  
+  // the administative settings menu
+  $items['admin/tripal/tripal_feature'] = array(
+    'title' => 'Features',
+    'description' => 'Basic Description of Tripal Organism Module Functionality',
+    'page callback' => 'theme',
+    'page arguments' => array('tripal_feature_admin'),
+    'access arguments' => array('administer tripal features'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['admin/tripal/tripal_feature/configuration'] = array(
+    'title' => 'Configuration',
+    'description' => 'Configure the Tripal Feature module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_feature_admin'),
+    'access arguments' => array('administer tripal features'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['admin/tripal/tripal_feature/fasta_loader'] = array(
+    'title' => 'Import a multi-FASTA file',
+    'description' => 'Load sequences from a multi-FASTA file into Chado',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_feature_fasta_load_form'),
+    'access arguments' => array('administer tripal features'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['admin/tripal/tripal_feature/gff3_load'] = array(
+    'title' => 'Import a GFF3 file',
+    'description' => 'Import a GFF3 file into Chado',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_feature_gff3_load_form'),
+    'access arguments' => array('administer tripal features'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/tripal/tripal_feature/delete'] = array(
+    'title' => ' Delete Features',
+    'description' => 'Delete multiple features from Chado',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_feature_delete_form'),
+    'access arguments' => array('administer tripal features'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/tripal/tripal_feature/sync'] = array(
+    'title' => ' Sync Features',
+    'description' => 'Sync features from Chado with Drupal',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_feature_sync_form'),
+    'access arguments' => array('administer tripal features'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  // the menu link for addressing any feature (by name, uniquename, synonym)
+  $items['feature/%'] = array(
+    'title' => 'Matched Features',
+    'description' => 'Shows all features that match the provided ID.  If multiple features match even by name, uniquename or synonym then a page is presented to allow the user to select which one they intended.',
+    'page callback' => 'tripal_feature_match_features_page',
+    'page arguments' => array(1),
+    'access arguments' => array('access chado_feature content'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  
+
+  return $items;
+}
+/**
+ *  We need to let drupal know about our theme functions and their arguments.
+ *  We create theme functions to allow users of the module to customize the
+ *  look and feel of the output generated in this module
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_theme() {
+  return array(
+    'tripal_feature_search_index' => array(
+      'arguments' => array('node'),
+    ),
+    'tripal_feature_search_results' => array(
+       'arguments' => array('node'),
+    ),
+    'tripal_organism_feature_browser' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_organism_feature_browser',
+    ),
+    'tripal_organism_feature_counts' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_organism_feature_counts',
+    ),
+    'tripal_feature_base' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_base',
+    ),
+    'tripal_feature_sequence' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_sequence',
+    ),
+    'tripal_feature_synonyms' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_synonyms',
+    ),
+    'tripal_feature_phenotypes' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_phenotypes',
+    ),
+    'tripal_feature_featurepos' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_featurepos',
+    ),
+    'tripal_feature_featureloc_sequences' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_featureloc_sequences',
+    ),
+    'tripal_feature_references' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_references',
+    ),
+    'tripal_feature_properties' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_properties',
+    ),
+    'tripal_feature_terms' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_terms',
+    ),
+    'tripal_feature_alignments' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_alignments',
+    ),
+    'tripal_feature_relationships' => array(
+       'arguments' => array('node' => NULL),
+       'template' => 'tripal_feature_relationships',
+    ),
+    'tripal_feature_edit_ALL_properties_form' => array(
+      'arguments' => array('form' => NULL),
+      'function' => 'theme_tripal_feature_edit_ALL_properties_form',
+    ),
+    'tripal_feature_admin' => array(
+      'template' => 'tripal_feature_admin',
+      'arguments' =>  array(NULL),
+      'path' => drupal_get_path('module', 'tripal_feature') . '/theme'
+    ),
+    
+    // themed forms
+    'tripal_feature_seq_extract_form' => array(
+       'arguments' => array('form'),
+    )
+  );
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_block($op = 'list', $delta = 0, $edit=array()) {
+  switch ($op) {
+    case 'list':
+      $blocks['references']['info'] = t('Tripal Feature References');
+      $blocks['references']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['base']['info'] = t('Tripal Feature Details');
+      $blocks['base']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['sequence']['info'] = t('Tripal Feature Sequence');
+      $blocks['sequence']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['featureloc_sequences']['info'] = t('Tripal Feature Annotated Sequence');
+      $blocks['featureloc_sequences']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['synonyms']['info'] = t('Tripal Feature Synonyms');
+      $blocks['synonyms']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['properties']['info'] = t('Tripal Feature Properties');
+      $blocks['properties']['cache'] = BLOCK_NO_CACHE;;
+
+      $blocks['terms']['info'] = t('Tripal Annotated Terms');
+      $blocks['terms']['cache'] = BLOCK_NO_CACHE;;
+
+      $blocks['alignments']['info'] = t('Tripal Feature Alignments');
+      $blocks['alignments']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['relationships']['info'] = t('Tripal Feature Relationships');
+      $blocks['relationships']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['org_feature_counts']['info'] = t('Tripal Organism Feature Counts');
+      $blocks['org_feature_counts']['cache'] = BLOCK_NO_CACHE;
+
+      $blocks['org_feature_browser']['info'] = t('Tripal Organism Feature Browser');
+      $blocks['org_feature_browser']['cache'] = BLOCK_NO_CACHE;
+
+      return $blocks;
+
+  case 'view':
+    if (user_access('access chado_feature content') and arg(0) == 'node' and is_numeric(arg(1))) {
+      $nid = arg(1);
+      $node = node_load($nid);
+
+      $block = array();
+      switch ($delta) {
+        case 'references':
+          $block['subject'] = t('References');
+          $block['content'] = theme('tripal_feature_references', $node);
+          break;
+        case 'base':
+          $block['subject'] = t('Feature Details');
+          $block['content'] = theme('tripal_feature_base', $node);
+          break;
+        case 'synonyms':
+          $block['subject'] = t('Synonyms');
+          $block['content'] = theme('tripal_feature_synonyms', $node);
+          break;
+        case 'properties':
+          $block['subject'] = t('Properties');
+          $block['content'] = theme('tripal_feature_properties', $node);
+          break;
+        case 'terms':
+          $block['subject'] = t('Annotated Terms');
+          $block['content'] = theme('tripal_feature_terms', $node);
+          break;
+        case 'sequence':
+          $block['subject'] = t('Sequence');
+          $block['content'] = theme('tripal_feature_sequence', $node);
+          break;
+        case 'featureloc_sequences':
+          $block['subject'] = t('Formatted Sequences');
+          $block['content'] = theme('tripal_feature_featureloc_sequences', $node);
+          break;
+        case 'alignments':
+          $block['subject'] = t('Alignments');
+          $block['content'] = theme('tripal_feature_alignments', $node);
+          break;
+        case 'relationships':
+          $block['subject'] = t('Relationships');
+          $block['content'] = theme('tripal_feature_relationships', $node);
+          break;
+        case 'org_feature_counts':
+          $block['subject'] = t('Feature Type Summary');
+          $block['content'] = theme('tripal_organism_feature_counts', $node);
+          break;
+        case 'org_feature_browser':
+          $block['subject'] = t('Feature Browser');
+          $block['content'] = theme('tripal_organism_feature_browser', $node);
+          break;
+        case 'library_feature_browser':
+          $block['subject'] = t('Library Feature Browser');
+          $block['content'] = theme('tripal_library_feature_browser', $node);
+          break;
+        case 'analysis_feature_browser':
+          $block['subject'] = t('Analysis Feature Browser');
+          $block['content'] = theme('tripal_analysis_feature_browser', $node);
+          break;
+        default :
+      }
+      return $block;
+    }
+
+  }
+}
+/**
+ *  When a new chado_feature node is created we also need to add information
+ *  to our chado_feature table.  This function is called on insert of a new node
+ *  of type 'chado_feature' and inserts the necessary information.
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_insert($node) {
+  // remove spaces, newlines from residues
+  $residues = preg_replace("/[\n\r\s]/", "", $node->residues);
+  $obsolete = 'FALSE';
+  if ($node->is_obsolete) {
+    $obsolete = 'TRUE';
+  }
+
+  // check to see if we are inserting a duplicate record.
+  $values = array(
+    'cv_id' => array(
+      'name' => 'sequence'
+    ),
+    'name' => $node->feature_type
+  );
+	//$requetetest=" UPDATE chado.feature set name='oligle1' where feature_id=73585;";
+	//chado_query($requetetest);
+  $type = tripal_core_chado_select('cvterm', array('cvterm_id'), $values);
+  $values = array(
+    'organism_id' => $node->organism_id,
+    'name' => $node->fname,
+    'uniquename' => $node->uniquename,
+    'residues' => $residues,
+    'seqlen' => drupal_strlen($residues),
+    'is_obsolete' => $obsolete,
+    'type_id' => $type[0]->cvterm_id,
+    'md5checksum' => md5($residues)
+  );
+  $options = array('is_duplicate' => TRUE, 'has_record' => TRUE);
+  $exists = tripal_core_chado_select('feature', array('*'), $values, $options);
+
+  // if the record is not a duplicate then add it
+  if (!$exists) {
+    $istatus = tripal_core_chado_insert('feature', $values);
+    if (!$istatus) {
+      drupal_set_message(t('Unable to add feature.'), 'warning');
+      watchdog('tripal_feature', 'Insert feature: Unable to create feature where values: %values',
+        array('%values' => print_r($values, TRUE)), WATCHDOG_WARNING);
+    }
+  }
+	
+  // now get the newly added record
+  $values = array(
+    'organism_id' => $node->organism_id,
+    'uniquename' => $node->uniquename,
+    'type_id' => $type[0]->cvterm_id,
+  );
+  $feature = tripal_core_chado_select('feature', array('feature_id'), $values);
+
+
+
+
+
+
+
+  // add the genbank accession and synonyms
+  chado_feature_add_synonyms($node->synonyms, $feature[0]->feature_id);
+
+  // make sure the entry for this feature doesn't already exist in the chado_feature table
+  // if it doesn't exist then we want to add it.
+  $node_check_sql = "SELECT * FROM {chado_feature} " .
+                    "WHERE feature_id = '%s'";
+  $node_check = db_fetch_object(db_query($node_check_sql, $feature[0]->feature_id));
+  if (!$node_check) {
+    // next add the item to the drupal table
+    $sql = "INSERT INTO {chado_feature} (nid, vid, feature_id, sync_date) ".
+           "VALUES (%d, %d, %d, " . time() . ")";
+      db_query($sql, $node->nid, $node->vid, $feature[0]->feature_id);
+
+
+	////////////////////
+	if (isset($node->description_id)){
+	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=".$feature[0]->feature_id." and   type_id= $node->description_id;"));
+	  if ($verif>0) {
+	    if (isset($node->desc)){
+	      $requetetest=" UPDATE chado.featureprop set value= '%s' ".
+			    "where feature_id='%s' and type_id= '%d';";
+   	      chado_query($requetetest,$node->desc,$feature[0]->feature_id,$node->description_id);
+	     }		 
+	  }	
+	    else{ 	
+	     if (isset($node->desc)){
+    	        $requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value)".
+			     " values ('%d','%d','%s');";	
+  		chado_query($requetetest,$feature[0]->feature_id,$node->description_id,$node->desc);
+	     }
+	 }
+       }
+	
+      // Ajout de la localisation
+   $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature[0]->feature_id "));
+   if ($verif>0) {
+     if (isset($node->locmin)){
+         $locmax=$node->locmin + $values['seqlen'] - 1 ;
+         $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
+   	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature[0]->feature_id);
+     }		 
+   }	
+   else{if (isset($node->locmin)){
+          $locmax=$node->locmin + $values['seqlen'] - 1;
+          $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%s');";
+	  chado_query($requetetest,$feature[0]->feature_id,$node->sourceloc,$node->locmin -1,$locmax);
+	}
+   }	
+
+  }//nodecheck
+}//function
+/*
+*
+*
+*
+*/
+function chrs_autocomplete($string='') {
+  $matches = array();
+  //search table `name` for cities that begin with the letters the user enters in the form
+ $sql="SELECT feature_id,name FROM chado.feature WHERE lower(name) LIKE lower('%s%%') order by name limit 10";
+ $result = chado_query($sql,$string);
+  //$result = db_query_range("SELECT name FROM chado.feature WHERE name LIKE '%s%%'", $string, 0, 10);
+  // add matches to $matches
+  while ($data = db_fetch_object($result)) {
+    $matches[$data->name] = check_plain($data->name);
+  }
+  // return for JS
+   return drupal_json($matches);
+
+}
+
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_update($node) {
+  if ($node->revision) {
+    // there is no way to handle revisions in Chado but leave
+    // this here just to make not we've addressed it.
+  }
+
+  $residues = preg_replace("/[\n\r\s]/", "", $node->residues);
+  $obsolete = 'FALSE';
+  if ($node->is_obsolete) {
+    $obsolete = 'TRUE';
+  }
+
+  // get the feature type id
+  $values = array(
+    'cv_id' => array(
+      'name' => 'sequence'
+      ),
+    'name' => $node->feature_type
+  );
+  $type = tripal_core_chado_select('cvterm', array('cvterm_id'), $values);
+
+  $feature_id = chado_get_id_for_node('feature', $node) ;
+
+  if (sizeof($type) > 0) {
+    $match = array(
+      'feature_id' => $feature_id,
+    );
+    $values = array(
+      'organism_id' => $node->organism_id,
+      'name' => $node->fname,      	
+      'uniquename' => $node->uniquename,
+      'residues' => $residues,
+      'seqlen' => drupal_strlen($residues),
+      'is_obsolete' => $obsolete,
+      'type_id' => $type[0]->cvterm_id,
+      'md5checksum' => md5($residues)
+    );
+    $options = array('return_record' => TRUE);
+    $status = tripal_core_chado_update('feature', $match, $values, $options);
+
+
+// Ajout de la description
+  if ($node->description_id != ""){
+	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=$feature_id and  type_id= $node->description_id;"));
+	if ($verif>0) {
+		if (isset($node->desc)){
+			$requetetest=" UPDATE chado.featureprop set value= '%s' where feature_id='%s' and type_id='%d'";
+   		 	chado_query($requetetest,$node->desc,$feature_id,$node->description_id);
+		}		 
+	}	
+	else{if (isset($node->desc)){
+    	     $requetetest=" INSERT INTO chado.featureprop(feature_id,type_id,value) values ('%d','%d','%s');";
+             chado_query($requetetest,$feature_id,$node->description_id,$node->desc);
+	     }
+	}
+  }
+
+// Ajout de la localisation
+    
+    $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature_id "));
+    if ($verif>0) {
+      if (isset($node->locmin)){
+         $locmax=$node->locmin + $values['seqlen'] -2;
+	 $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
+   	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature_id);
+         
+      }		 
+    }	
+    else{if (isset($node->locmin)){
+         $locmax=$node->locmin + $values['seqlen'] -2 ;
+    	 $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d','%d','%s');";
+  	 chado_query($requetetest,$feature_id,$node->sourceloc,$node->locmin -1,$locmax);
+        }
+   }
+  	
+
+
+    // add the genbank synonyms
+    chado_feature_add_synonyms($node->synonyms, $feature_id);
+  }
+  else {
+    drupal_set_message(t('Unable to update feature.'), 'warning');
+    watchdog('tripal_feature',
+    'Update feature: Unable to update feature where values: %values',
+    array('%values' => print_r($values, TRUE)),
+    WATCHDOG_WARNING
+    );
+  }
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_delete($node) {
+
+  $feature_id  = chado_get_id_for_node('feature', $node);
+
+  // if we don't have a library id for this node then this isn't a node of
+  // type chado_library or the entry in the chado_library table was lost.
+  if (!$feature_id) {
+    return;
+  }
+
+  // remove the drupal content
+  $sql_del = "DELETE FROM {chado_feature} ".
+             "WHERE nid = %d ".
+             "AND vid = %d";
+  db_query($sql_del, $node->nid, $node->vid);
+  $sql_del = "DELETE FROM {node} ".
+             "WHERE nid = %d ".
+             "AND vid = %d";
+  db_query($sql_del, $node->nid, $node->vid);
+  $sql_del = "DELETE FROM {node_revisions} ".
+             "WHERE nid = %d ".
+             "AND vid = %d";
+  db_query($sql_del, $node->nid, $node->vid);
+
+
+  // Remove data from feature tables of chado database.  This will
+  // cause a cascade delete and remove all data in referencing tables
+  // for this feature
+  chado_query("DELETE FROM {feature} WHERE feature_id = %d", $feature_id);
+
+  drupal_set_message(t("The feature and all associated data were removed from") .
+  "chado");
+
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_add_synonyms($synonyms, $feature_id) {
+
+  // separate synomys by carriage returns
+  $synonyms = preg_replace("/[\n\r]+/", " ", $synonyms);
+  // split the synonyms into an array based on a space as the delimieter
+  $syn_array = array();
+  $syn_array = explode(" ", $synonyms);
+
+
+  // remove any old synonyms
+  $feature_syn_dsql = "DELETE FROM {feature_synonym} WHERE feature_id = %d";
+  if (!chado_query($feature_syn_dsql, $feature_id)) {
+    $error .= "Could not remove synonyms from feature. ";
+  }
+	// teste de commit
+  // return if we don't have any synonmys to add
+  if (!$synonyms) {
+    return;
+  }
+  // iterate through each synonym and add it to the database
+  foreach ($syn_array as $syn) {
+    // skip this item if it's empty
+    if (!$syn) {
+    break; }
+
+    // check to see if we have this accession number already in the database
+    // if so then don't add it again. it messes up drupal if the insert fails.
+    // It is possible for the accession number to be present and not the feature
+    $synonym_sql = "SELECT synonym_id FROM {synonym} ".
+                   "WHERE name = '%s'";
+    $synonym = db_fetch_object(chado_query($synonym_sql, $syn));
+    if (!$synonym) {
+      $synonym_isql = "INSERT INTO {synonym} (name,synonym_sgml,type_id) ".
+                      "VALUES ('%s','%s', ".
+                      "   (SELECT cvterm_id ".
+                      "    FROM {CVTerm} CVT ".
+                      "    INNER JOIN CV ON CVT.cv_id = CV.cv_id ".
+                      "    WHERE CV.name = 'feature_property' and CVT.name = 'synonym'))";
+      if (!chado_query($synonym_isql, $syn, $syn)) {
+        $error .= "Could not add synonym. ";
+      }
+      // now get the synonym we just added
+      $synonym_sql = "SELECT synonym_id FROM {synonym} ".
+                     "WHERE name = '%s'";
+      $synonym = db_fetch_object(chado_query($synonym_sql, $syn));
+    }
+
+    // now add in our new sysnonym
+    $feature_syn_isql = "INSERT INTO {feature_synonym} (synonym_id,feature_id,pub_id) ".
+                        "VALUES (%d,%d,1)";
+    if (!chado_query($feature_syn_isql, $synonym->synonym_id, $feature_id)) {
+      $error .= "Could not add synonyms to feature. ";
+    }
+  }
+
+  // return to the drupal database
+  return $error;
+
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_add_gbaccession($accession, $feature_id) {
+
+  // use chado database
+
+  // remove any old accession from genbank dbEST
+  $fdbxref_dsql = "DELETE FROM {feature_dbxref} ".
+                 "WHERE feature_id = %d and dbxref_id IN ".
+                 "   (SELECT DBX.dbxref_id FROM {dbxref} DBX ".
+                 "    INNER JOIN DB  ON DB.db_id = DBX.db_id ".
+                 "    INNER JOIN feature_dbxref FDBX ON DBX.dbxref_id = FDBX.dbxref_id ".
+                 "    WHERE DB.name = 'DB:Genbank' and FDBX.feature_id = %d)";
+  if (!chado_query($fdbxref_dsql, $feature_id, $feature_id)) {
+    $error .= "Could not remove accession from feature. ";
+  }
+
+  // if we don't have an accession number to add then just return
+  if (!$accession) {
+    return;
+  }
+  // get the db_id
+  $db_sql = "SELECT db_id FROM {DB} ".
+            "WHERE name = 'DB:Genbank_est'";
+  $db = db_fetch_object(chado_query($db_sql));
+
+  // check to see if we have this accession number already in the database
+  // if so then don't add it again. it messes up drupal if the insert fails.
+  // It is possible for the accession number to be present and not the feature
+  $dbxref_sql = "SELECT dbxref_id FROM {dbxref} ".
+                "WHERE db_id = %d and accession = '%s'";
+  $dbxref = db_fetch_object(chado_query($dbxref_sql, $db->db_id, $accession));
+  if (!$dbxref) {
+    // add the accession number
+    $dbxref_isql = "INSERT INTO {dbxref} (db_id,accession) ".
+                   "  VALUES (%d, '%s') ";
+    if (!chado_query($dbxref_isql, $db->db_id, $accession)) {
+      $error .= 'Could not add accession as a database reference ';
+    }
+    // get the dbxref_id for the just added accession number
+    $dbxref_sql = "SELECT dbxref_id FROM {dbxref} ".
+                  "WHERE db_id = %d and accession = '%s'";
+    $dbxref = db_fetch_object(chado_query($dbxref_sql, $db->db_id, $accession));
+  }
+
+
+  // associate the accession number with the feature
+  $feature_dbxref_isql = "INSERT INTO {feature_dbxref} (feature_id,dbxref_id) ".
+                         "  VALUES (%d, %d) ";
+  if (!chado_query($feature_dbxref_isql, $feature_id, $dbxref->dbxref_id)) {
+    $error .= 'Could not add feature database reference. ';
+  }
+
+  return $error;
+}
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_form($node, $param) {
+
+  $type = node_get_types('type', $node);
+  $form = array();
+  
+  $feature = $node->feature;
+
+  // add the residues to the feature object
+  $feature = tripal_core_expand_chado_vars($feature, 'field', 'feature.residues');
+
+  // if the node has synonyms then use that as the form may be returning
+  // from an error.  Otherwise try to find synonyms from the database
+  $synonyms = $node->synonyms;
+  $feature = tripal_core_expand_chado_vars($feature, 'table', 'feature_synonym');
+ $feature_synonyms = $feature->feature_synonym;
+ if (!$synonyms) {
+    if (!is_array($feature_synonyms)) {
+      $synonyms = $feature_synonyms->synonym_id->name;
+    }
+    elseif (is_array($feature_synonyms)) {
+      foreach ($feature_synonyms as $index => $synonym) {
+        $synonyms .= $synonym->synonym_id->name . "\n";
+      }
+    }
+  }
+
+  $analyses = $node->analyses;
+  $references = $node->references;
+
+  // We need to pass above variables for preview to show
+  $form['feature'] = array(
+    '#type' => 'value',
+    '#value' => $feature
+  );
+	/*
+  //Descripion
+  $form['desc'] = array(
+    '#type' => 'value',
+    '#value' => $desc
+  );
+	*/		
+  // This field is read when previewing a node
+  $form['synonyms'] = array(
+    '#type' => 'value',
+    '#value' => $synonyms
+  );
+  
+  // This field is read when previewing a node
+  $form['analyses'] = array(
+    '#type' => 'value',
+    '#value' => $analyses
+  );
+  // This field is read when previewing a node
+  $form['references'] = array(
+    '#type' => 'value',
+    '#value' => $references
+  );
+
+  // keep track of the feature id if we have one.  If we do have one then
+  // this would indicate an update as opposed to an insert.
+  $form['feature_id'] = array(
+    '#type' => 'value',
+    '#value' => $feature->feature_id,
+  );
+  /*$form_state=Null;
+// on AHAH callbacks we want to keep a list of all the properties that have been removed
+  // we'll store this info in a hidden field and retrieve it here
+  $d_removed = $form_state['values']['removed'];
+
+  // get the number of new fields that have been aded via AHAH callbacks
+  $num_new = $form_state['values']['num_new'] ? $form_state['values']['num_new'] : 0;
+
+  // initialze default properties array. This is where we store the property defaults
+  $d_properties = array();
+*/
+///////////
+  $form['title']= array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#required' => TRUE,
+    '#default_value' => $node->title,
+    '#description' => t('The title must be a unique identifier for this feature.  It is recommended to use a combination of uniquename, organism and feature type in the title as this is guranteed to be unique.'),
+    '#maxlength' => 255
+  );
+$form['title']= array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#required' => TRUE,
+    '#default_value' => $node->title,
+    '#description' => t('Enter a title for the feature '),
+    '#maxlength' => 255
+  );
+
+  $form['uniquename']= array(
+    '#type' => 'textfield',
+    '#title' => t('Unique Feature Name'),
+    '#required' => TRUE,
+    '#default_value' => $feature->uniquename,
+    '#description' => t('Enter a unique name for this feature.  This name must be unique for the organism and feature type.'),
+    '#maxlength' => 255
+  );
+
+  $form['fname']= array(
+    '#type' => 'textfield',
+    '#title' => t('Feature Name'),
+    '#required' => TRUE,
+    '#default_value' => $feature->name,
+    '#description' => t('Enter the name used by humans to refer to this feature.'),
+    '#maxlength' => 255
+  );
+
+  // get the sequence ontology CV ID
+  $values = array('name' => 'sequence');
+  $cv = tripal_core_chado_select('cv', array('cv_id'), $values); 
+  $cv_id = $cv[0]->cv_id; 
+
+  $form['feature_type'] = array(
+   '#title'       => t('Feature Type'),
+   '#type'        => 'textfield',
+   '#description' => t("Choose the feature type."),
+   '#required'    => TRUE,
+   '#default_value' => $feature->type_id->name,
+   '#autocomplete_path' => "admin/tripal/tripal_cv/cvterm/auto_name/$cv_id",
+  );
+
+// get the chromosone
+ 
+  $form['sourceloc'] = array(
+   '#title'       => t('Source Feature'),
+   '#type'        => 'textfield',
+   '#description' => t("Choose the Source of the feature."),
+   '#required'    => FALSE,   
+   '#autocomplete_path' => "chrs/auto",
+  );
+
+
+
+// get the list of CVTerm
+
+  $sql = "select cvterm_id,name from chado.cvterm where cvterm_id in (select distinct type_id from chado.featureprop) ;";
+  $Descriptionsql = chado_query($sql);
+  $typedesc = array();
+  $typedesc[''] = '';
+  while ($type = db_fetch_object($Descriptionsql)) {
+    $typedesc[$type->cvterm_id] = "$type->name";
+  }
+
+
+  $form['description_id'] = array(
+    '#title'       => t('Value Description'),
+    '#type'        => t('select'),
+    '#description' => t("Choose the kind of description for this feature "),
+    '#required'    => FALSE,
+    
+    '#options'     => $typedesc,
+ );
+
+
+//  Get the description
+/*
+   $requete="Select f.value from chado.featureprop as f left join chado.feature fm".
+		" on f.feature_id=fm.feature_id join chado.cvterm as t on f.type_id=t.cvterm_id ".
+		"where f.feature_id= %d";
+  
+   $variablenulle = chado_query($requete,$feature->feature_id);
+   $qwerty = db_result($variablenulle);
+*/	
+
+
+// Form for Description
+  	
+  $form['desc']= array(
+    '#type' => 'textfield',
+    '#title' => t('Description'),
+    '#required' => FALSE,
+    '#default_value' => $qwerty,
+    '#description' => t('Description'),
+  );	
+
+//  Get the localisation
+
+$requete1="Select fmin,fmax from chado.featureloc where feature_id= %d";
+  
+   $variablenulle1 = chado_query($requete1,$feature->feature_id);
+
+
+while ($row = db_fetch_object($variablenulle1)){
+		$fmin=$row->fmin;
+		$fmax=$row->fmax;
+	}
+
+
+
+$form['locmin']= array(
+    '#type' => 'textfield',
+    '#title' => t('Localisation MIN'),
+    '#required' => FALSE,
+    '#default_value' => $fmin +1,
+    '#description' => t('Saisir la localisation minimale'),
+  );	
+
+	 
+/*
+$form['locmax']= array(
+    '#type' => 'textfield',
+    '#title' => t('Localisation MAX'),
+    '#required' => FALSE,
+    '#default_value' => $fmax,
+    '#description' => t('Saisir la localisation maximale'),
+  );	
+*/
+  
+
+  // get the list of organisms
+  $sql = "SELECT * FROM {Organism} ORDER BY genus, species";
+  $org_rset = chado_query($sql);
+  $organisms = array();
+  $organisms[''] = '';
+  while ($organism = db_fetch_object($org_rset)) {
+    $organisms[$organism->organism_id] = "$organism->genus $organism->species ($organism->common_name)";
+  }
+  $form['organism_id'] = array(
+    '#title'       => t('Organism'),
+    '#type'        => t('select'),
+    '#description' => t("Choose the organism with which this feature is associated"),
+    '#required'    => TRUE,
+    '#default_value' => $feature->organism_id->organism_id,
+    '#options'     => $organisms,
+  );
+
+  // Get synonyms
+  if ($synonyms) {
+    if (is_array($synonyms)) {
+      foreach ($synonyms as $synonym) {
+        $syn_text .= "$synonym->name\n";
+      }
+    }
+    else {
+      $syn_text = $synonyms;
+    }
+  }
+  $form['synonyms']= array(
+    '#type' => 'textarea',
+    '#title' => t('Synonyms'),
+    '#required' => FALSE,
+    '#wysiwyg' =>FALSE, 
+    '#default_value' => $syn_text,
+    '#description' => t('Enter alternate names (synonmys) for this feature to help in searching and identification. You may enter as many alternate names as needed each on different lines.'),
+  );
+
+  $form['residues']= array(
+    '#type' => 'textarea',
+    '#title' => t('Residues'),
+    '#required' => FALSE,
+    '#wysiwyg' =>FALSE, 
+    '#default_value' => $feature->residues,
+    '#description' => t('Enter the nucelotide sequences for this feature'),
+  );
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// get the analysis properties
+/* 
+  $properties_select = array();
+  $properties_select[] = 'Select a Property';
+  $properties_list = array();
+  $sql = "
+    select cvterm_id,name from chado.cvterm where cvterm_id in (select distinct type_id from chado.featureprop) ;
+  ";
+  $prop_types = chado_query($sql);
+  while ($prop = db_fetch_object($prop_types)) {
+  	$properties_select[$prop->cvterm_id] = $prop->name;
+  	$properties_list[$prop->cvterm_id] = $prop;
+  }
+
+
+  $form['properties'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Properties Details'),
+    '#description' => t('Description of properties'),
+     '#process'  =>array('form_expand_ahah'),
+     );
+
+
+$form['properties']['table']['field1']= array(
+    '#type'          => 'select',
+    '#options'       => $properties_select,    
+  );
+ $form['properties']['table']['field2'] = array(
+    '#type' => 'textfield',
+    '#value' =>  '',    
+  );
+$form['properties']['table']['field3'] = array(
+    '#type'         => 'image_button',      
+    '#value'        => t('Add'),
+    '#src'          => drupal_get_path('theme', 'tripal') . '/images/add.png',
+    
+    '#attributes' => array('onClick' => 'return False;'),
+    );
+*/
+
+  $checked = '';
+  if ($feature->is_obsolete == 't') {
+    $checked = '1';
+  }
+  $form['is_obsolete']= array(
+    '#type' => 'checkbox',
+    '#title' => t('Is Obsolete'),
+    '#required' => FALSE,
+    '#default_value' => $checked,
+    '#description' => t('Check this box if this sequence should be retired and no longer included in further analysis.'),
+  );
+  return $form;
+}
+/*
+ *
+ *
+ * @ingroup tripal_feature
+ *
+
+
+
+/*
+/*
+*/
+function chado_feature_validate($node) {
+  $result = 0;
+  
+  // make sure the feature type is a real sequence ontology term
+  $type = tripal_cv_get_cvterm_by_name($node->feature_type, NULL, 'sequence');
+  if (!$type) {
+     form_set_error('feature_type', t("The feature type is not a valid name from the Sequence Ontology."));	
+  }
+
+  // if this is an update, we want to make sure that a different feature for
+  // the organism doesn't already have this uniquename. We don't want to give
+  // two sequences the same uniquename
+  if ($node->feature_id) {
+    $sql = "SELECT *
+            FROM {Feature} F
+              INNER JOIN {cvterm} CVT ON F.type_id = CVT.cvterm_id
+            WHERE uniquename = '%s'
+             AND organism_id = %d AND CVT.name = '%s' AND NOT feature_id = %d";
+    $result = db_fetch_object(chado_query($sql, $node->uniquename, $node->organism_id, $node->feature_type, $node->feature_id));
+    if ($result) {
+      form_set_error('uniquename', t("Feature update cannot proceed. The feature name '$node->uniquename' is not unique for this organism. Please provide a unique name for this feature."));
+    }
+  }
+
+  // if this is an insert then we just need to make sure this name doesn't
+  // already exist for this organism if it does then we need to throw an error
+  else {
+    $sql = "SELECT *
+            FROM {Feature} F
+              INNER JOIN {cvterm} CVT ON F.type_id = CVT.cvterm_id
+            WHERE uniquename = '%s'
+             AND organism_id = %d AND CVT.name = '%s'";
+    $result = db_fetch_object(chado_query($sql, $node->uniquename, $node->organism_id, $node->feature_type));
+    if ($result) {
+      form_set_error('uniquename', t("Feature insert cannot proceed. The feature name '$node->uniquename' already exists for this organism. Please provide a unique name for this feature."));
+    }
+  }
+
+  // we don't allow a genbank accession number for a contig
+  if ($node->feature_type == 'contig' and $node->gbaccession) {
+    form_set_error('gbaccession', t("Contigs cannot have a genbank accession number.  Please change the feature type or remove the accession number"));
+  }
+
+}
+/**
+ *  When a node is requested by the user this function is called to allow us
+ *  to add auxiliary data to the node object.
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_load($node) {
+
+  // get the feature details from chado
+  $feature_id = chado_get_id_for_node('feature', $node);
+
+  $values = array('feature_id' => $feature_id);
+  $feature = tripal_core_generate_chado_var('feature', $values);
+
+  if (strcmp($feature->name, $feature->uniquename)==0) {
+     $node->title = $feature->name . " (" . $feature->type_id->name . ") " . $feature->organism_id->genus . " " . $feature->organism_id->species ;
+  }
+
+  $additions = new stdClass();
+  $additions->feature = $feature;
+  return $additions;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_organism($organism_id) {
+  // add organism details
+  $sql = "SELECT * FROM {organism} WHERE organism_id = %d";
+  $organism = db_fetch_object(chado_query($sql, $organism_id));
+  return $organism;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_synonyms($feature_id) {
+
+  $sql = "SELECT S.name ".
+        "FROM {Feature_Synonym} FS ".
+        "  INNER JOIN {Synonym} S ".
+        "    ON FS.synonym_id = S.Synonym_id ".
+        "WHERE FS.feature_id = %d ".
+        "ORDER BY S.name ";
+  $results = chado_query($sql, $feature_id);
+  $synonyms = array();
+  $i=0;
+  while ($synonym = db_fetch_object($results)) {
+    $synonyms[$i++] = $synonym;
+  }
+  return $synonyms;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_properties($feature_id) {
+
+  $sql = "SELECT CVT.name as cvname, FS.type_id, FS.value, FS.rank,
+           CVT.definition, CVT.is_obsolete,
+           DBX.dbxref_id,DBX.accession,DB.name as dbname,
+           DB.urlprefix, DB.description as db_description, DB.url
+         FROM {featureprop} FS
+           INNER JOIN {cvterm} CVT ON FS.type_id = CVT.cvterm_id
+           INNER JOIN {dbxref} DBX ON CVT.dbxref_id = DBX.dbxref_id
+           INNER JOIN {db} DB      ON DB.db_id = DBX.db_id
+         WHERE FS.feature_id = %d
+         ORDER BY FS.rank ASC";
+  $results = chado_query($sql, $feature_id);
+  $i=0;
+  $properties = array();
+  while ($property = db_fetch_object($results)) {
+    $properties[$i++] = $property;
+  }
+  return $properties;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_references($feature_id) {
+
+  $sql = "SELECT F.uniquename,F.Feature_id,DBX.accession,DB.description as dbdesc, ".
+        "   DB.db_id, DB.name as db_name, DB.urlprefix,DBX.dbxref_id ".
+        "FROM {feature} F ".
+        "  INNER JOIN {feature_dbxref} FDBX on F.feature_id = FDBX.feature_id ".
+        "  INNER JOIN {dbxref} DBX on DBX.dbxref_id = FDBX.dbxref_id ".
+        "  INNER JOIN {db} on DB.db_id = DBX.db_id ".
+        "WHERE F.feature_id = %d ".
+        "ORDER BY DB.name ";
+  $results = chado_query($sql, $feature_id);
+  $references = array();
+  $i=0;
+  while ($accession = db_fetch_object($results)) {
+    $references[$i++] = $accession;
+  }
+  return $references;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_featurelocs($feature_id, $side = 'as_parent', $aggregate = 1) {
+
+  $sql = "SELECT
+           F.name, F.feature_id, F.uniquename,
+           FS.name as src_name,
+           FS.feature_id as src_feature_id,
+           FS.uniquename as src_uniquename,
+           CVT.name as cvname, CVT.cvterm_id,
+           CVTS.name as src_cvname, CVTS.cvterm_id as src_cvterm_id,
+           FL.fmin, FL.fmax, FL.is_fmin_partial, FL.is_fmax_partial,FL.strand,
+           FL.phase
+         FROM {featureloc} FL
+            INNER JOIN {feature} F on FL.feature_id = F.feature_id
+            INNER JOIN {feature} FS on FS.feature_id = FL.srcfeature_id
+            INNER JOIN {cvterm} CVT on F.type_id = CVT.cvterm_id
+            INNER JOIN {cvterm} CVTS on FS.type_id = CVTS.cvterm_id
+         ";
+  if (strcmp($side, 'as_parent')==0) {
+    $sql .= "WHERE FL.srcfeature_id = %d ";
+  }
+  if (strcmp($side, 'as_child')==0) {
+    $sql .= "WHERE FL.feature_id = %d ";
+  }
+
+  $flresults = chado_query($sql, $feature_id);
+
+  // copy the results into an array
+  $i=0;
+  $featurelocs = array();
+  while ($loc = db_fetch_object($flresults)) {
+    // if a drupal node exists for this feature then add the nid to the
+    // results object
+    $sql = 'SELECT nid FROM {chado_feature} WHERE feature_id = %d';
+
+    $ffeature = db_fetch_object(db_query($sql, $loc->feature_id));
+    $sfeature = db_fetch_object(db_query($sql, $loc->src_feature_id));
+    $loc->fnid = $ffeature->nid;
+    $loc->snid = $sfeature->nid;
+    // add the result to the array
+    $featurelocs[$i++] = $loc;
+  }
+
+  // Add the relationship feature locs if aggregate is turned on
+  if ($aggregate and strcmp($side, 'as_parent')==0) {
+    // get the relationships for this feature without substituting any children
+    // for the parent. We want all relationships
+    $relationships = tripal_feature_get_aggregate_relationships($feature_id, 0);
+    foreach ($relationships as $rindex => $rel) {
+      // get the featurelocs for each of the relationship features
+      $rel_featurelocs = tripal_feature_load_featurelocs($rel->subject_id, 'as_child', 0);
+      foreach ($rel_featurelocs as $findex => $rfloc) {
+        $featurelocs[$i++] = $rfloc;
+      }
+    }
+  }
+
+  usort($featurelocs, 'tripal_feature_sort_locations');
+  return $featurelocs;
+}
+/**
+ *  used to sort the feature locs by start position
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_sort_locations($a, $b) {
+  return strnatcmp($a->fmin, $b->fmin);
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_relationships($feature_id, $side = 'as_subject') {
+  // get the relationships for this feature.  The query below is used for both
+  // querying the object and subject relationships
+  $sql = "SELECT
+           FS.name as subject_name,
+           FS.uniquename as subject_uniquename,
+           CVTS.name as subject_type,
+           CVTS.cvterm_id as subject_type_id,
+           FR.subject_id,
+           FR.type_id as relationship_type_id,
+           CVT.name as rel_type,
+           FO.name as object_name,
+           FO.uniquename as object_uniquename,
+           CVTO.name as object_type,
+           CVTO.cvterm_id as object_type_id,
+           FR.object_id,
+           FR.rank
+         FROM {feature_relationship} FR
+           INNER JOIN {cvterm} CVT ON FR.type_id = CVT.cvterm_id
+           INNER JOIN {feature} FS ON FS.feature_id = FR.subject_id
+           INNER JOIN {feature} FO ON FO.feature_id = FR.object_id
+           INNER JOIN {cvterm} CVTO ON FO.type_id = CVTO.cvterm_id
+           INNER JOIN {cvterm} CVTS ON FS.type_id = CVTS.cvterm_id
+  ";
+  if (strcmp($side, 'as_object')==0) {
+    $sql .= " WHERE FR.object_id = %d";
+  }
+  if (strcmp($side, 'as_subject')==0) {
+    $sql .= " WHERE FR.subject_id = %d";
+  }
+  $sql .= " ORDER BY FR.rank";
+
+  // get the relationships
+  $results = chado_query($sql, $feature_id);
+
+
+  // iterate through the relationships, put these in an array and add
+  // in the Drupal node id if one exists
+  $i=0;
+  $nodesql = "SELECT nid FROM {chado_feature} WHERE feature_id = %d";
+  $relationships = array();
+  while ($rel = db_fetch_object($results)) {
+    $node = db_fetch_object(db_query($nodesql, $rel->subject_id));
+    if ($node) {
+      $rel->subject_nid = $node->nid;
+    }
+    $node = db_fetch_object(db_query($nodesql, $rel->object_id));
+    if ($node) {
+      $rel->object_nid = $node->nid;
+    }
+    $relationships[$i++] = $rel;
+  }
+  return $relationships;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_get_aggregate_relationships($feature_id, $substitute=1,
+  $levels=0, $base_type_id=NULL, $depth=0) {
+
+  // we only want to recurse to as many levels deep as indicated by the
+  // $levels variable, but only if this variable is > 0. If 0 then we
+  // recurse until we reach the end of the relationships tree.
+  if ($levels > 0 and $levels == $depth) {
+    return NULL;
+  }
+
+  // first get the relationships for this feature
+  return tripal_feature_load_relationships($feature_id, 'as_object');
+
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_featureloc_sequences($feature_id, $featurelocs) {
+
+  // if we don't have any featurelocs then no point in continuing
+  if (!$featurelocs) {
+    return array();
+  }
+
+  // get the list of relationships (including any aggregators) and iterate
+  // through each one to find information needed to color-code the reference sequence
+  $relationships = tripal_feature_get_aggregate_relationships($feature_id);
+  if (!$relationships) {
+    return array();
+  }
+
+
+  // iterate through each of the realtionships features and get their
+  // locations
+  foreach ($relationships as $rindex => $rel) {
+    // get the featurelocs for each of the relationship features
+    $rel_featurelocs = tripal_feature_load_featurelocs($rel->subject_id, 'as_child', 0);
+    foreach ($rel_featurelocs as $rfindex => $rel_featureloc) {
+      // keep track of this unique source feature
+      $src = $rel_featureloc->src_feature_id ."-". $rel_featureloc->src_cvterm_id;
+
+      // copy over the results to the relationship object.  Since there can
+      // be more than one feature location for each relationship feature we
+      // use the '$src' variable to keep track of these.
+      $rel->featurelocs->$src->src_uniquename = $rel_featureloc->src_uniquename;
+      $rel->featurelocs->$src->src_cvterm_id  = $rel_featureloc->src_cvterm_id;
+      $rel->featurelocs->$src->src_cvname     = $rel_featureloc->src_cvname;
+      $rel->featurelocs->$src->fmin           = $rel_featureloc->fmin;
+      $rel->featurelocs->$src->fmax           = $rel_featureloc->fmax;
+      $rel->featurelocs->$src->src_name       = $rel_featureloc->src_name;
+
+      // keep track of the individual parts for each relationship
+      $start = $rel->featurelocs->$src->fmin;
+      $end   = $rel->featurelocs->$src->fmax;
+      $type  = $rel->subject_type;
+      $rel_locs[$src]['parts'][$start][$type]['start'] = $start;
+      $rel_locs[$src]['parts'][$start][$type]['end']   = $end;
+      $rel_locs[$src]['parts'][$start][$type]['type']  = $type;
+    }
+  }
+
+  // the featurelocs array provided to the function contains the locations
+  // where this feature is found.   We want to get the sequence for each
+  // location and then annotate it with the parts found from the relationships
+  // locations determiend above.
+  $sql = "SELECT substring(residues from %d for %d) as residues ".
+         "FROM {feature} ".
+         "WHERE feature_id = %d";
+  $floc_sequences = array();
+  foreach ($featurelocs as $featureloc) {
+
+    // build the src name so we can keep track of the different parts for each feature
+    $src = $featureloc->srcfeature_id->feature_id ."-". $featureloc->srcfeature_id->type_id->cvterm_id;
+
+    // orient the parts to the beginning of the feature sequence
+    if (!empty($rel_locs[$src]['parts'])) {
+      $parts = $rel_locs[$src]['parts'];
+      $rparts = array();  // we will fill this up if we're on the reverse strand
+
+      foreach ($parts as $start => $types) {
+        foreach ($types as $type_name => $type) {
+          if ($featureloc->strand >= 0) {
+             // this is on the forward strand.  We need to convert the start on the src feature to the
+             // start on this feature's sequence
+             $parts[$start][$type_name]['start'] = $parts[$start][$type_name]['start'] - $featureloc->fmin;
+             $parts[$start][$type_name]['end']   = $parts[$start][$type_name]['end'] - $featureloc->fmin;
+             $parts[$start][$type_name]['type']  = $type_name;
+          }
+          else {
+             // this is on the reverse strand.  We need to swap the start and stop and calculate from the
+             // begining of the reverse sequence
+             $size = ($featureloc->fmax - $featureloc->fmin);
+             $start_orig = $parts[$start][$type_name]['start'];
+             $end_orig = $parts[$start][$type_name]['end'];
+             $new_start = $size - ($end_orig - $featureloc->fmin);
+             $new_end = $size - ($start_orig - $featureloc->fmin);
+
+             $rparts[$new_start][$type_name]['start'] = $new_start;
+             $rparts[$new_start][$type_name]['end']   = $new_end;
+             $rparts[$new_start][$type_name]['type']  = $type_name;
+          }
+        }
+      }
+
+      // now sort the parts
+      // if we're on the reverse strand we need to resort
+      if ($featureloc->strand >= 0) {
+        usort($parts, 'tripal_feature_sort_rel_parts_by_start');
+      }
+      else {
+        usort($rparts, 'tripal_feature_sort_rel_parts_by_start');
+        $parts = $rparts;
+      }
+
+      $floc_sequences[$src]['src'] = $src;
+      $floc_sequences[$src]['type'] = $featureloc->feature_id->type_id->name;
+      $sequence = db_fetch_object(chado_query($sql, $featureloc->fmin + 1, ($featureloc->fmax - $featureloc->fmin), $featureloc->srcfeature_id->feature_id));
+      $residues = $sequence->residues;
+      if ($featureloc->strand < 0) {
+         $residues = tripal_feature_reverse_complement($residues);
+      }
+      $strand = '.';
+      if ($featureloc->strand == 1) {
+        $strand = '+';
+      }
+      elseif ($featureloc->strand == -1) {
+        $strand = '-';
+      }
+      $defline = $featureloc->feature_id->name . " " . $featureloc->srcfeature_id->name . ":" . ($featureloc->fmin + 1) . ".." . $featureloc->fmax . " " . $strand;
+      $floc_sequences[$src]['formatted_seq'] =  tripal_feature_color_sequence($residues, $parts, $defline);
+    }
+  }
+  return $floc_sequences;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_get_matched_alignments($feature) {
+  // This function is for features that align through an intermediate such
+  // as 'EST_match' or 'match'.  This occurs in the case where two sequences
+  // align but where one does not align perfectly.  Some ESTs may be in a contig
+  // but not all of the EST.  Portions may overhang and not be included in the
+  // consensus if quality is bad.
+  // For example:
+  //
+  //    Feature 1: Contig --------------------
+  //    Feature 2: EST_match           -------
+  //    Feature 3: EST                 ---------
+  //
+  // The feature provided to the function will always be the feature 1.  The
+  // featureloc columns prefixed with 'right' (e.g. right_fmin) belong to the
+  // alignment of feature 3 with feature 2
+  //
+  // Features may align to more than one feature and are not matches. We do
+  // not want to include these, so we have to filter on the SO terms:
+  // match, or %_match
+  //
+   $sql = "SELECT  ".
+          "   FL1.featureloc_id    as left_featureloc_id, ".
+          "   FL1.srcfeature_id    as left_srcfeature_id, ".
+          "   FL1.feature_id       as left_feature_id, ".
+          "   FL1.fmin             as left_fmin, ".
+          "   FL1.is_fmin_partial  as left_is_fmin_partial, ".
+          "   FL1.fmax             as left_fmax, ".
+          "   FL1.is_fmax_partial  as left_is_fmax_partial, ".
+          "   FL1.strand           as left_strand,  ".
+          "   FL1.phase            as left_phase, ".
+          "   FL1.locgroup         as left_locgroup, ".
+          "   FL1.rank             as left_rank, ".
+          "   FL2.featureloc_id    as right_featureloc_id, ".
+          "   FL2.srcfeature_id    as right_srcfeature_id, ".
+          "   FL2.feature_id       as right_feature_id, ".
+          "   FL2.fmin             as right_fmin, ".
+          "   FL2.is_fmin_partial  as right_is_fmin_partial, ".
+          "   FL2.fmax             as right_fmax, ".
+          "   FL2.is_fmax_partial  as right_is_fmax_partial, ".
+          "   FL2.strand           as right_strand,  ".
+          "   FL2.phase            as right_phase, ".
+          "   FL2.locgroup         as right_locgroup, ".
+          "   FL2.rank             as right_rank ".
+          "FROM {feature} F1 ".
+          "  INNER JOIN {featureloc} FL1 on FL1.srcfeature_id = F1.feature_id ".
+          "  INNER JOIN {feature} F2 on FL1.feature_id = F2.feature_id ".
+          "  INNER JOIN {featureloc} FL2 on FL2.feature_id = F2.feature_id ".
+          "  INNER JOIN {feature} F3 on FL2.srcfeature_id = F3.feature_id ".
+          "  INNER JOIN {cvterm} CVT2 on F2.type_id = CVT2.cvterm_id ".
+          "WHERE F1.feature_id = %d and NOT F3.feature_id = %d ".
+          "  AND (CVT2.name = 'match' or CVT2.name like '%_match') ".
+          "ORDER BY FL1.fmin";
+
+   $results = chado_query($sql, $feature->feature_id, $feature->feature_id);
+
+   // iterate through the results and add them to our featurelocs array
+   $featurelocs = array();
+   while ($fl = db_fetch_object($results)) {
+      $featurelocs[] = $fl ;
+   }
+   return $featurelocs;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_organism_feature_counts($organism) {
+
+  // don't show the browser if the settings in the admin page is turned off
+  // instead return the array indicating the status of the browser
+  $show_counts = variable_get('tripal_feature_summary_setting', 'show_feature_summary');
+  if (strcmp($show_counts, 'show_feature_summary')!=0) {
+    return array('enabled' => FALSE );
+  }
+
+
+  $args = array();
+  $names = array();
+  $order = array();
+
+  // build the where clause for the SQL statement if we have a custom term list
+  // we'll also keep track of the names the admin provided (if any) and the
+  // order that the terms should appear.
+  $is_custom = 0;
+  $temp = rtrim(variable_get('tripal_feature_summary_report_mapping', ''));
+  $where = '';
+  if ($temp) {
+    $is_custom = 1;
+    $temp = explode("\n", $temp);
+    foreach ($temp as $key => $value) {
+      // separate the key value pairs
+      $temp2 = explode("=", $value);
+      $feature_type = rtrim($temp2[0]);
+      $args[] = $feature_type;
+      $order[] = $feature_type;
+      // if a new name is provided then use that otherwise just
+      // use the feature type
+      if (count($temp2) == 2) {
+        $names[] = rtrim($temp2[1]);
+      }
+      else {
+        $names[] = $feature_type;
+      }
+      $where .= "OFC.feature_type = '%s' OR \n";
+    }
+    if ($where) {
+      $where = drupal_substr($where, 0, -5);  # remove OR from the end
+      $where = "($where) AND";
+    }
+  }
+
+  // get the feature counts.  This is dependent on a materialized view
+  // installed with the organism module
+  $sql = "
+    SELECT OFC.num_features,OFC.feature_type,CVT.definition
+    FROM {organism_feature_count} OFC
+      INNER JOIN {cvterm} CVT on OFC.cvterm_id = CVT.cvterm_id
+    WHERE $where organism_id = %d
+    ORDER BY num_features desc
+  ";
+  $args[] = $organism->organism_id;
+  $org_features = chado_query($sql, $args);
+
+  // iterate through the types
+  $types = array();
+  while ($type = db_fetch_object($org_features)) {
+    $types[$type->feature_type] = $type;
+    // if we don't have an order this means we didn't go through the loop
+    // above to set the names, so do that now
+    if (!$is_custom) {
+      $names[] = $type->feature_type;
+      $order[] = $type->feature_type;
+    }
+  }
+
+  # now reorder the types
+  $ordered_types = array();
+  foreach ($order as $type) {
+    $ordered_types[] = $types[$type];
+  }
+  return array( 'types' => $ordered_types, 'names' => $names, 'enabled' => TRUE );
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_organism_feature_browser($organism) {
+
+  if (!$organism) {
+    return array();
+  }
+
+  // don't show the browser if the settings in the admin page is turned off
+  // instead return the array indicating the status of the browser
+  $show_browser = variable_get('tripal_feature_browse_setting', 'show_feature_browser');
+  if (strcmp($show_browser, 'show_feature_browser')!=0) {
+    return array('enabled' => FALSE);
+  }
+
+  // get the list of available sequence ontology terms for which
+  // we will build drupal pages from features in chado.  If a feature
+  // is not one of the specified typse we won't build a node for it.
+  $allowed_types = variable_get('chado_browser_feature_types', 'EST contig');
+  $allowed_types = preg_replace("/[\s\n\r]+/", " ", $allowed_types);
+  $so_terms = split(' ', $allowed_types);
+
+  // perform the query
+  $values = array(
+    'organism_id' => $organism->organism_id,
+    'type_id' => array(
+      'name' => $so_terms
+    ),
+  );
+  $columns = array('feature_id', 'name', 'uniquename', 'type_id');
+  $options = array(
+    'pager' => array('limit' => 10, 'element' => 0),
+    'order_by' => array('name' => 'ASC'),
+  );
+  $features = tripal_core_chado_select('feature', $columns, $values, $options);
+  $pager = theme('pager');
+
+  // add the node ids and types
+  $nsql = "SELECT nid FROM {chado_feature} WHERE feature_id = %d";
+  $tsql = "SELECT name FROM {cvterm} WHERE cvterm_id = %d";
+  foreach ($features as $feature) {
+    $node = db_fetch_object(db_query($nsql, $feature->feature_id));
+    $type = db_fetch_object(chado_query($tsql, $feature->type_id));
+    $feature->nid = $node->nid;
+    $feature->type_name = $type->name;
+  }
+
+  return array( 'features' => $features, 'pager' => $pager, 'enabled' => TRUE );
+}
+
+/**
+ * This generates the Feature Browser which can optionally be included on library pages
+ * and shows all features belonging to the given library. This Browse can be shown/hidden
+ * on the Feature Configuration page.
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_library_feature_browser($library) {
+
+  // don't show the browser if the settings in the admin page is turned off
+  // instead return the array indicating the status of the browser
+  $show_browser = variable_get('tripal_library_feature_browse_setting', 'show_feature_browser');
+  if (strcmp($show_browser, 'show_feature_browser')!=0) {
+    return array('enabled' => FALSE);
+  }
+
+  // get a list of feature types to include in the browser
+  $allowed_types = variable_get('chado_browser_feature_types', 'EST contig');
+  $allowed_types = preg_replace("/[\s\n\r]+/", " ", $allowed_types);
+  $so_terms = split(' ', $allowed_types);
+  $where_cvt = "";
+  foreach ($so_terms as $term) {
+    $where_cvt .= "CVT.name = '$term' OR ";
+  }
+  $where_cvt = drupal_substr($where_cvt, 0, drupal_strlen($where_cvt)-3);  # strip trailing 'OR'
+
+  // get the features for this library
+  $sql  = "SELECT F.name,F.feature_id,F.uniquename,CVT.name as cvname ".
+         "FROM {feature} F ".
+            "  INNER JOIN {cvterm} CVT on F.type_id = CVT.cvterm_id ".
+            "  INNER JOIN {library_feature} LF on F.feature_id = LF.feature_id ".
+            "  INNER JOIN {library} L on LF.library_id = L.library_id ".
+          "WHERE LF.library_id = %d and ($where_cvt) ".
+          "ORDER BY feature_id ASC";
+
+  // the counting SQL
+  $csql  = "SELECT count(*) ".
+          "FROM {feature} F".
+            "  INNER JOIN {cvterm} CVT on F.type_id = CVT.cvterm_id ".
+            "  INNER JOIN {library_feature} LF on F.feature_id = LF.feature_id ".
+            "  INNER JOIN {library} L on LF.library_id = L.library_id ".
+          "WHERE LF.library_id = %d and ($where_cvt) ".
+          "GROUP BY L.library_id ";
+
+  $previous_db = tripal_db_set_active('chado');  // use chado database
+  $org_features = pager_query($sql, 10, 0, $csql, $library->library_id);
+  tripal_db_set_active($previous_db);  // now use drupal database
+  $pager = theme('pager');
+
+  // prepare the query that will lookup node ids
+  $sql = "SELECT nid FROM {chado_feature} ".
+         "WHERE feature_id = %d";
+  $i=0;
+  $features = array();
+  while ($feature = db_fetch_object($org_features)) {
+    $node = db_fetch_object(db_query($sql, $feature->feature_id));
+    $feature->nid = $node->nid;
+    $features[$i++] = $feature;
+  }
+
+  return array( 'features' => $features, 'pager' => $pager, 'enabled' => TRUE );
+}
+/**
+ * This generates the Feature Browse which can optionally be included on library pages
+ * and shows all features belonging to the given library. This Browse can be shown/hidden
+ * on the Feature Configuration page.
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_load_analysis_feature_browser($analysis) {
+
+  // don't show the browser if the settings in the admin page is turned off
+  // instead return the array indicating the status of the browser
+  $show_browser = variable_get('tripal_analysis_feature_browse_setting', 'show_feature_browser');
+  if (strcmp($show_browser, 'show_feature_browser')!=0) {
+    return array('enabled' => FALSE);
+  }
+
+  // get a list of feature types to include in the browser
+  $allowed_types = variable_get('chado_browser_feature_types', 'EST contig');
+  $allowed_types = preg_replace("/[\s\n\r]+/", " ", $allowed_types);
+  $so_terms = split(' ', $allowed_types);
+  $where_cvt = "";
+  foreach ($so_terms as $term) {
+    $where_cvt .= "CVT.name = '$term' OR ";
+  }
+  $where_cvt = drupal_substr($where_cvt, 0, drupal_strlen($where_cvt)-3);  # strip trailing 'OR'
+
+  // get the features for this library
+  $sql  = "SELECT F.name,F.feature_id,F.uniquename,CVT.name as cvname ".
+         "FROM {feature} F ".
+            "  INNER JOIN {cvterm} CVT on F.type_id = CVT.cvterm_id ".
+            "  INNER JOIN {analysisfeature} AF on F.feature_id = AF.feature_id ".
+            "  INNER JOIN {analysis} A on AF.analysis_id = A.analysis_id ".
+          "WHERE A.analysis_id = %d and ($where_cvt) ".
+          "ORDER BY feature_id ASC";
+
+  // the counting SQL
+  $csql  = "SELECT count(*) ".
+          "FROM {feature} F".
+            "  INNER JOIN {cvterm} CVT on F.type_id = CVT.cvterm_id ".
+            "  INNER JOIN {analysisfeature} AF on F.feature_id = AF.feature_id ".
+            "  INNER JOIN {analysis} A on AF.analysis_id = A.analysis_id ".
+          "WHERE A.analysis_id = %d and ($where_cvt) ".
+          "GROUP BY A.analysis_id ";
+
+  $previous_db = tripal_db_set_active('chado');  // use chado database
+  $org_features = pager_query($sql, 10, 0, $csql, $analysis->analysis_id);
+  tripal_db_set_active($previous_db);  // now use drupal database
+  $pager = theme('pager');
+
+  // prepare the query that will lookup node ids
+  $sql = "SELECT nid FROM {chado_feature} ".
+         "WHERE feature_id = %d";
+  $i=0;
+  $features = array();
+  while ($feature = db_fetch_object($org_features)) {
+    $node = db_fetch_object(db_query($sql, $feature->feature_id));
+    $feature->nid = $node->nid;
+    $features[$i++] = $feature;
+  }
+
+  return array( 'features' => $features, 'pager' => $pager, 'enabled' => TRUE );
+}
+
+/**
+ *  used to sort the list of relationship objects by start position
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_sort_rel_objects($a, $b) {
+  return strnatcmp($a->fmin, $b->fmin);
+}
+
+/**
+ *  used to sort the list of relationship parts by start position
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_sort_rel_parts_by_start($a, $b) {
+  foreach ($a as $type_name => $details) {
+     $astart = $a[$type_name]['start'];
+     break;
+  }
+  foreach ($b as $type_name => $details) {
+     $bstart = $b[$type_name]['start'];
+     break;
+  }
+  return strnatcmp($astart, $bstart);
+}
+
+/**
+ *  used to sort the list of relationship parts by start position
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_sort_rel_parts_by_end($a, $b) {
+  $val = strnatcmp($b['end'], $a['end']);
+  if ($val == 0) {
+     return strcmp($a['type'], $b['type']);
+  }
+  return $val;
+}
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_color_sequence($sequence, $parts, $defline) {
+
+
+  $types = array();
+  // first get the list of types so we can create a color legend
+  foreach ($parts as $index => $t) {
+    foreach ($t as $type_name => $details) {
+       $types[$type_name] = 1;
+    }
+  }
+
+  $newseq .= "<div id=\"tripal_feature-featureloc_sequence-legend\">Legend: ";
+  foreach ($types as $type_name => $present) {
+    $newseq .= "<span id=\"tripal_feature-legend-$type_name\" class=\"tripal_feature-legend-item tripal_feature-featureloc_sequence-$type_name\" script=\"\">$type_name</span>";
+  }
+  $newseq .= "</div>Hold the cursor over a type above to highlight its positions in the sequence below. The colors in the sequence below merge when types overlap.";
+
+
+  // set the background color of the rows based on the type
+  $pos = 0;
+  $newseq .= "<pre id=\"tripal_feature-featureloc_sequence\">";
+  $newseq .= ">$defline\n";
+
+  // iterate through the parts. They should be in order.
+  $ends = array();
+  foreach ($parts as $index => $types) {
+
+    // get the start for this part.  All types in this part start at the
+    // same position so we only need the first record
+    foreach ($types as $type => $child) {
+      $start = $child['start'];
+      break;
+    }
+
+    // add in the sequence up to the start of this part
+    for ($i = $pos; $i < $start; $i++) {
+      $newseq .= $sequence{$pos};
+      $seqcount++;
+      if ($seqcount % 50 == 0) {
+        $newseq .= "\n";
+      }
+      if (array_key_exists($pos, $ends)) {
+        foreach ($ends[$pos] as $end) {
+          $newseq .= "</span>";
+        }
+      }
+      $pos++;
+    }
+
+    // we want to sort the parts by their end. We want the span tag to
+    // to be added in the order the parts end.
+    usort($types, 'tripal_feature_sort_rel_parts_by_end');
+
+    // now add the child span for all types that start at this position
+    foreach ($types as $type) {
+      $class = "tripal_feature-featureloc_sequence-" . $type['type'];
+      $newseq .= "<span class=\"$class\">";
+      // add the end position
+      $end = $type['end'];
+      $ends[$end][] = $end;
+    }
+  }
+
+  // add in rest of the sequence
+  for ($i = $pos; $i <= strlen($sequence); $i++) {
+    $newseq .= $sequence{$pos};
+    $seqcount++;
+    if ($seqcount % 50 == 0) {
+      $newseq .= "\n";
+    }
+    if (array_key_exists($pos, $ends)) {
+      foreach ($ends[$pos] as $end) {
+        $newseq .= "</span>";
+      }
+    }
+    $pos++;
+  }
+
+  $newseq .= "</pre>";
+  return $newseq;
+}
+
+/**
+ *  This function customizes the view of the chado_feature node.  It allows
+ *  us to generate the markup.
+ *
+ * @ingroup tripal_feature
+ */
+function chado_feature_view($node, $teaser = FALSE, $page = FALSE) {
+
+  if (!$teaser) {
+    // use drupal's default node view:
+    $node = node_prepare($node, $teaser);
+
+    // if we're building the node for searching then
+    // we want to handle this within the module and
+    // not allow theme customization.  We don't want to
+    // index all items (such as DNA sequence).
+    if ($node->build_mode == NODE_BUILD_SEARCH_INDEX) {
+      $node->content['index_version'] = array(
+        '#value' => theme('tripal_feature_search_index', $node),
+        '#weight' => 1,
+      );
+    }
+    elseif ($node->build_mode == NODE_BUILD_SEARCH_RESULT) {
+      $node->content['index_version'] = array(
+        '#value' => theme('tripal_feature_search_results', $node),
+        '#weight' => 1,
+      );
+    }
+    else {
+       // do nothing here, let the theme derived template handle display
+    }
+  }
+
+  return $node;
+}
+
+/**
+ * Display feature information for associated organisms. This function also
+ * provides contents for indexing
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_nodeapi(&$node, $op, $teaser, $page) {
+
+  switch ($op) {
+    // Note that this function only adds feature view to an organism node.
+    // The view of a feature node is controled by the theme *.tpl file
+    case 'view':
+      switch ($node->type) {
+        case 'chado_organism':
+        // Show feature browser
+          $types_to_show = array('chado_organism', 'chado_library');
+          if (in_array($node->type, $types_to_show, TRUE)) {
+            $node->content['tripal_organism_feature_counts'] = array(
+              '#value' => theme('tripal_organism_feature_counts', $node),
+            );
+            $node->content['tripal_organism_feature_browser'] = array(
+              '#value' => theme('tripal_organism_feature_browser', $node),
+            );
+          }
+        break;
+      }
+    break;
+  }
+}
+
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_preprocess_tripal_feature_relationships(&$variables) {
+  // we want to provide a new variable that contains the matched features.
+  $feature = $variables['node']->feature;
+
+  if (!$feature->all_relationships) {
+    $feature->all_relationships = tripal_feature_get_feature_relationships($feature);
+  }
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_preprocess_tripal_feature_alignments(&$variables) {
+
+  // we want to provide a new variable that contains the matched features.
+  $feature = $variables['node']->feature;
+  $feature = tripal_core_expand_chado_vars($feature, 'table', 'featureloc');
+
+  // get alignments as child
+  $cfeaturelocs = $feature->featureloc->feature_id;
+  if (!$cfeaturelocs) {
+     $cfeaturelocs = array();
+  }
+  elseif (!is_array($cfeaturelocs)) {
+     $cfeaturelocs = array($cfeaturelocs);
+  }
+  // get alignment as parent
+  $pfeaturelocs = $feature->featureloc->srcfeature_id;
+  if (!$pfeaturelocs) {
+     $pfeaturelocs = array();
+  }
+  elseif (!is_array($pfeaturelocs)) {
+     $pfeaturelocs = array($pfeaturelocs);
+  }
+
+  // get matched alignments (those with an itermediate 'match' or 'EST_match', etc
+  $mfeaturelocs = tripal_feature_get_matched_alignments($feature);
+  $feature->matched_featurelocs = tripal_feature_get_matched_alignments($feature);
+
+  // combine all three alignments into a single array for printing together in
+  // a single list
+  $alignments = array();
+  foreach ($pfeaturelocs as $featureloc) {
+     // if type is a 'match' then ignore it. We will handle those below
+     if (preg_match('/(^match$|^.*?_match|match_part)$/', $featureloc->feature_id->type_id->name)) {
+        continue;
+     }
+     $alignment = new stdClass();
+     $alignment->record = $featureloc;
+     $alignment->name = $featureloc->feature_id->name;
+     $alignment->nid = $featureloc->feature_id->nid;
+     $alignment->type = $featureloc->feature_id->type_id->name;
+     $alignment->fmin = $featureloc->fmin;
+     $alignment->fmax = $featureloc->fmax;
+     $alignment->phase = $featureloc->phase;
+     $alignment->strand = $featureloc->strand;
+     $alignments[] = $alignment;
+  }
+  foreach ($cfeaturelocs as $featureloc) {
+     // if type is a 'match' then ignore it. We will handle those below
+     if (preg_match('/(^match$|^.*?_match|match_part)$/', $featureloc->feature_id->type_id->name)) {
+        continue;
+     }
+     $alignment = new stdClass();
+     $alignment->record = $featureloc;
+     $alignment->name = $featureloc->srcfeature_id->name;
+     $alignment->nid = $featureloc->srcfeature_id->nid;
+     $alignment->type = $featureloc->srcfeature_id->type_id->name;
+     $alignment->fmin = $featureloc->fmin;
+     $alignment->is_fmin_partial = $featureloc->is_fmin_partial;
+     $alignment->fmax = $featureloc->fmax;
+     $alignment->is_fmax_partial = $featureloc->is_fmax_partial;
+     $alignment->phase = $featureloc->phase;
+     $alignment->strand = $featureloc->strand;
+     $alignments[] = $alignment;
+  }
+  // in matching features, the left feature is always the feature
+  // provided to this function.
+  foreach ($mfeaturelocs as $featureloc) {
+     // get more information about the right feature
+     $select = array('feature_id' => $featureloc->right_srcfeature_id);
+     $rfeature = tripal_core_generate_chado_var('feature', $select);
+     // now add to the list
+     $alignment = new stdClass();
+     $alignment->record = $featureloc;
+     $alignment->right_feature = $rfeature;
+     $alignment->name = $rfeature->name;
+     $alignment->nid = $rfeature->nid;
+     $alignment->type = $rfeature->type_id->name;
+     $alignment->fmin = $featureloc->left_fmin;
+     $alignment->is_fmin_partial = $featureloc->left_is_fmin_partial;
+     $alignment->fmax = $featureloc->left_fmax;
+     $alignment->is_fmax_partial = $featureloc->left_is_fmax_partial;
+     $alignment->phase = $featureloc->left_phase;
+     $alignment->strand = $featureloc->left_strand;
+     $alignment->right_fmin = $featureloc->right_fmin;
+     $alignment->right_is_fmin_partial = $featureloc->right_is_fmin_partial;
+     $alignment->right_fmax = $featureloc->right_fmax;
+     $alignment->right_is_fmax_partial = $featureloc->right_is_fmax_partial;
+     $alignment->right_phase = $featureloc->right_phase;
+     $alignment->right_strand = $featureloc->right_strand;
+     $alignments[] = $alignment;
+  }
+  $feature->all_featurelocs = $alignments;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_preprocess_tripal_organism_feature_counts(&$variables) {
+  $organism = $variables['node']->organism;
+  $organism->feature_counts = tripal_feature_load_organism_feature_counts($organism);
+}
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_preprocess_tripal_organism_feature_browser(&$variables) {
+  $organism = $variables['node']->organism;
+  $organism->feature_browser = tripal_feature_load_organism_feature_browser($organism);
+}
+
+/**
+ * Preprocessor function for the Library Feature Browser
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_preprocess_tripal_library_feature_browser(&$variables) {
+  $library = $variables['node']->library;
+  $library->feature_browser = tripal_feature_load_library_feature_browser($library);
+}
+
+/**
+ * Preprocessor function for the Analysis Feature Browser
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_preprocess_tripal_analysis_feature_browser(&$variables) {
+  $analysis = $variables['node']->analysis;
+  $analysis->feature_browser = tripal_feature_load_analysis_feature_browser($analysis);
+}
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_cv_chart($chart_id) {
+
+  // we only want the chart to show feature types setup by the admin
+  $temp = rtrim(variable_get('tripal_feature_summary_report_mapping', ''));
+  $where = '';
+  if ($temp) {
+    $temp = explode("\n", $temp);
+    foreach ($temp as $key => $value) {
+      $temp2 = explode("=", $value);
+      $feature_type = rtrim($temp2[0]);
+      $where .= "CNT.feature_type = '$feature_type' OR \n";
+    }
+    if ($where) {
+      $where = drupal_substr($where, 0, -5);  # remove OR from the end
+      $where = "($where) AND";
+    }
+  }
+
+  $organism_id = preg_replace("/^tripal_feature_cv_chart_(\d+)$/", "$1", $chart_id);
+
+  // The CV module will create the JSON array necessary for buillding a
+  // pie chart using jgChart and Google Charts.  We have to pass to it
+  // a table that contains count information, tell it which column
+  // contains the cvterm_id and provide a filter for getting the
+  // results we want from the table.
+  $options = array(
+    count_mview      => 'organism_feature_count',
+    cvterm_id_column => 'cvterm_id',
+    count_column     => 'num_features',
+    size             => '550x200',
+    filter           => "$where CNT.organism_id = $organism_id",
+  );
+  return $options;
+}
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_cv_tree($tree_id) {
+
+  // The CV module will create the JSON array necessary for buillding a
+  // pie chart using jgChart and Google Charts.  We have to pass to it
+  // a table that contains count information, tell it which column
+  // contains the cvterm_id and provide a filter for getting the
+  // results we want from the table.
+  $organism_id = preg_replace("/^tripal_feature_cv_tree_(\d+)$/", "$1", $tree_id);
+  $options = array(
+    cv_id            => tripal_cv_get_cv_id('sequence'),
+    count_mview      => 'organism_feature_count',
+    cvterm_id_column => 'cvterm_id',
+    count_column     => 'num_features',
+    filter           => "CNT.organism_id = $organism_id",
+    label            => 'Features',
+  );
+  return $options;
+}
+
+
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_del_vocabulary() {
+  //include the file containing the required functions for adding taxonomy vocabs
+  module_load_include('inc', 'taxonomy', 'taxonomy.admin');
+
+  // get the vocabularies
+  $vocabularies = taxonomy_get_vocabularies();
+
+  // These taxonomic terms are hard coded because we
+  // know we have these relationships in the chado tables
+  // through foreign key relationships.  The tripal
+  // modules that correspond to these chado "modules" don't
+  // need to be installed for the taxonomy to work.
+  foreach ($vocabularies as $vocab) {
+    if ($vocab->name == 'Feature Type') {
+      taxonomy_del_vocabulary($vocab->vid);
+    }
+    if ($vocab->name == 'Organism') {
+      taxonomy_del_vocabulary($vocab->vid);
+    }
+    if ($vocab->name == 'Library') {
+      taxonomy_del_vocabulary($vocab->vid);
+    }
+    if ($vocab->name == 'Analysis') {
+      taxonomy_del_vocabulary($vocab->vid);
+    }
+  }
+
+}
+
+
+
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_return_fasta($feature, $desc) {
+  $fasta  = ">" . variable_get('chado_feature_accession_prefix', 'ID') . "$feature->feature_id|$feature->name";
+  $fasta .= " $desc\n";
+  $fasta .= wordwrap($feature->residues, 50, "\n", TRUE);
+  $fasta .= "\n\n";
+  return $fasta;
+}
+/**
+ *
+ *
+ * @ingroup tripal_feature
+ */
+function tripal_feature_job_describe_args($callback, $args) {
+
+  $new_args = array();
+  if ($callback == 'tripal_feature_load_fasta') {
+    $new_args['FASTA file'] = $args[0];
+    $organism = tripal_core_chado_select('organism', array('genus', 'species'), array('organism_id' => $args[1]));
+    $new_args['Organism'] = $organism[0]->genus . " " . $organism[0]->species;
+    $new_args['Sequence Type'] = $args[2];
+    $new_args['Name Match Type'] = $args[14];
+    $new_args['Name RE'] = $args[4];
+    $new_args['Unique Name RE'] = $args[5];
+
+    // add in the relationship arguments
+    $new_args['Relationship Type'] = $args[8];
+    $new_args['Relationship Parent RE'] = $args[9];
+    $new_args['Relationship Parent Type'] = $args[10];
+
+    // add in the database reference arguments
+    if ($args[7]) {
+      $db = tripal_core_chado_select('db', array('name'), array('db_id' => $args[7]));
+    }
+    $new_args['Database Reference'] = $db[0]->name;
+    $new_args['Accession RE'] = $args[6];
+    $new_args['Method'] = $args[11];
+
+    // add in the analysis
+    if ($args[13]) {
+      $analysis = tripal_core_chado_select('analysis', array('name'), array('analysis_id' => $args[13]));
+    }
+    $new_args['Analysis'] = $analysis[0]->name;
+  }
+  if ($callback == 'tripal_feature_delete_features') {
+    if ($args[0]) {
+      $organism = tripal_core_chado_select('organism', array('genus', 'species'), array('organism_id' => $args[0]));
+      $new_args['Organism'] = $organism[0]->genus . " " . $organism[0]->species;
+    }
+    else {
+      $new_args['Organism'] = '';
+    }
+
+    if ($args[1]) {
+      $analysis = tripal_core_chado_select('analysis', array('name'), array('analysis_id' => $args[1]));
+      $new_args['Analysis'] = $analysis[0]->name;
+    }
+    else {
+      $new_args['Analysis'] = '';
+    }
+
+    $new_args['Sequence Type'] = $args[2];
+    $new_args['Is Unique Name'] = $args[3];
+    $new_args['Features Names'] = $args[4];
+
+  }
+  elseif ($callback == 'tripal_feature_load_gff3') {
+
+    $new_args['GFF File'] = $args[0];
+    $organism = tripal_core_chado_select('organism', array('genus', 'species'), array('organism_id' => $args[1]));
+    $new_args['Organism'] = $organism[0]->genus . " " . $organism[0]->species;
+    $analysis = tripal_core_chado_select('analysis', array('name'), array('analysis_id' => $args[2]));
+    $new_args['Analysis'] = $analysis[0]->name;
+    $new_args['Use a Transaction'] = ($args[7] == 1) ? "Yes" : "No";
+    $new_args['Import only new features'] = ($args[3] == 1) ? "Yes" : "No";
+    $new_args['Import all and update'] = ($args[4] == 1) ? "Yes" : "No";
+    $new_args['Import all and replace'] = ($args[5] == 1) ? "Yes" : "No";
+    $new_args['Delete features'] = ($args[6] == 1) ? "Yes" : "No";
+    $target_organism = tripal_core_chado_select('organism', array('genus', 'species'), array('organism_id' => $args[8]));
+    $new_args['Target organism'] = $target_organism[0]->genus . " " . $target_organism[0]->species;
+    $new_args['Target type'] = $args[9];
+    $new_args['Create target'] = ($args[10] == 1) ? "Yes" : "No";
+    $new_args['Starting line'] = $args[11];
+    $new_args['Landmark Type'] = $args[12];
+    $new_args['Alternate ID attribute'] = $args[13];
+    $new_args['Create Organism'] = ($args[14] == 1) ? "Yes" : "No";
+  }
+  if ($callback == 'tripal_feature_sync_features') {
+    if ($args[0]) {
+      $organism = tripal_core_chado_select('organism', array('genus', 'species'), array('organism_id' => $args[0]));
+      $new_args['Organism'] = $organism[0]->genus . " " . $organism[0]->species;
+    }
+    else {
+      $new_args['Organism'] = '';
+    }
+    $new_args['Feature Types'] = $args[1];
+  }
+  return $new_args;
+}
+
+/**
+ * Implements hook_coder_ignore().
+ * Defines the path to the file (tripal_core.coder_ignores.txt) where ignore rules for coder are stored
+ */
+function tripal_feature_coder_ignore() {
+  return array(
+    'path' => drupal_get_path('module', 'tripal_feature'),
+    'line prefix' => drupal_get_path('module', 'tripal_feature'),
+  );
+}
+
+/*
+ * Uses the value provided in the $id argument to find all features that match
+ * that ID by name, featurename or synonym.  If it matches uniquenly to a single
+ * feature it will redirect to that feature page, otherwise, a list of matching
+ * features is shown.
+ */
+function tripal_feature_match_features_page($id) {
+
+  $sql = "
+    SELECT
+      F.name, F.uniquename, F.feature_id,
+      O.genus, O.species, O.organism_id,
+      CVT.cvterm_id, CVT.name as type_name,
+      CF.nid,
+      array_agg(S.name) as synonyms
+    FROM {feature} F
+      INNER JOIN {organism} O on F.organism_id = O.organism_id
+      INNER JOIN {cvterm} CVT on CVT.cvterm_id = F.type_id
+      LEFT JOIN {feature_synonym} FS on FS.feature_id = F.feature_id
+      LEFT JOIN {synonym} S on S.synonym_id = FS.synonym_id
+      INNER JOIN public.chado_feature CF on CF.feature_id = F.feature_id
+    WHERE
+      F.uniquename = '%s' or
+      F.name = '%s' or
+      S.name = '%s'
+    GROUP BY F.name, F.uniquename, F.feature_id, O.genus, O.species,
+      O.organism_id, CVT.cvterm_id, CVT.name, CF.nid
+  ";
+  $results = chado_query($sql, $id, $id, $id);
+
+  $num_matches = 0;
+
+  // iterate through the matches and build the table for showing matches
+  $header = array('Uniquename', 'Name', 'Type', 'Species', 'Synonyms');
+  $rows = array();
+  $curr_match;
+  while ($match = db_fetch_object($results)) {
+    $curr_match = $match;
+    $synonyms = $match->synonyms;
+    $synonyms = preg_replace('/[\"\{\}]/', '', $synonyms);
+    $rows[] = array(
+       $match->uniquename,
+       "<a href=\"" . url("node/". $match->nid) ."\">" . $match->name . "</a>",
+       $match->type_name,
+       '<i>' . $match->genus . ' ' . $match->species . '</i>',
+       $synonyms,
+    );
+    $num_matches++;
+  }
+
+  // if we have more than one match then generate the table, otherwise, redirect
+  // to the matched feature
+  if ($num_matches == 1) {
+    drupal_goto(url("node/" . $curr_match->nid));
+  }
+  if ($num_matches == 0) {
+    return "<p>No features matched the given name '$id'</p>";
+  }
+
+  $table_attrs = array(
+    'class' => 'tripal-table tripal-table-horz'
+  );
+  $output = "<p>The following features match the name '$id'.</p>";
+  $output .= theme_table($header, $rows, $table_attrs, $caption);
+  return $output;
+}
+
+/**
+ * 
+ * @param unknown_type $form
+ * @param unknown_type $form_state
+ * @param unknown_type $form_id
+ */
+function tripal_feature_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == "tripal_feature_seq_extract_form") {    
+    // updating the form through the ahah callback sets the action of
+    // the form to the ahah callback URL. We need to set it back
+    // to the normal form URL
+    $form['#action'] = url("find/sequences");
+  }
+} 
