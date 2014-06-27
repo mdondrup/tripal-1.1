@@ -2072,7 +2072,7 @@ function tripal_core_expand_chado_vars($object, $type, $to_expand, $table_option
 
   // make sure we have a value
   if (!$object) {
-    watchdog('tripal_core', 'Cannot pass non array as arugment, $object, to tripal_core_expand_chado_vars function.', array(), WATCHDOG_ERROR);
+    watchdog('tripal_core', 'Cannot pass non array as argument, $object, to tripal_core_expand_chado_vars function.', array(), WATCHDOG_ERROR);
     return $object;
   }
 
@@ -2160,6 +2160,9 @@ function tripal_core_expand_chado_vars($object, $type, $to_expand, $table_option
               $object->expanded = $to_expand;
             }
             else {
+              if (!is_object($object->{$foreign_table})) {
+                $object->{$foreign_table} = new stdClass();
+              }
               $object->{$foreign_table} = $foreign_object;
               $object->expanded = $to_expand;
             }
@@ -2167,6 +2170,9 @@ function tripal_core_expand_chado_vars($object, $type, $to_expand, $table_option
           // if the object returned is NULL then handle that
           else {
             if (count($foreign_table_desc['foreign keys'][$base_table]['columns']) > 1) {
+              if (!is_object($object->{$foreign_table})) {
+                $object->{$foreign_table} = new stdClass();
+              }
               $object->{$foreign_table}->{$left} = NULL;
             }
             else {
@@ -2189,7 +2195,7 @@ function tripal_core_expand_chado_vars($object, $type, $to_expand, $table_option
         // if we did not expand this table we should return a message that the foreign table
         // could not be expanded
         if (!$did_expansion) {
-          watchdog('tripal_core', 'tripal_core_expand_chado_vars: Could not expand table, %table. It is ',
+          watchdog('tripal_core', 'tripal_core_expand_chado_vars: Could not expand table, %table. It is ' .
             'not in a foreign key relationship with the base object nor with any other expanded table. ' .
             'Check the table definition to ensure that a proper foreign key relationship is present.',
             array('%table' => $foreign_table), WATCHDOG_ERROR);

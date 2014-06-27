@@ -306,7 +306,7 @@ function tripal_feature_gff3_load_form_submit($form, &$form_state) {
  * @ingroup gff3_loader
  */
 function tripal_feature_load_gff3($gff_file, $organism_id, $analysis_id, 
-  $add_only = 0, $update = 0, $refresh = 0, $remove = 0, $use_transaction = 1, 
+  $add_only = 0, $update = 1, $refresh = 0, $remove = 0, $use_transaction = 1, 
   $target_organism_id = NULL, $target_type = NULL,  $create_target = 0, 
   $start_line = 1, $landmark_type = '', $alt_id_attr = '', $create_organism = FALSE, 
   $job = NULL) {     
@@ -645,14 +645,14 @@ function tripal_feature_load_gff3($gff_file, $organism_id, $analysis_id,
       // the same parent.
       elseif (array_key_exists('Parent', $tags)) {
         $date = getdate();
-        $attr_uniquename = $tags['Parent'][0] . "-$type-$landmark-" . $date[0] . ":$fmin..$fmax";
+        $attr_uniquename = $tags['Parent'][0] . "-$type-$landmark-" . $date[0] . ":" . ($fmin + 1) . ".." . $fmax;
         $attr_name = $attr_uniquename;
       }
       // generate a unique name based on the date, type and location
       // and set the name to simply be the type
       else {
         $date = getdate();
-        $attr_uniquename = $date[0] . "-$type-$landmark:$fmin..$fmax";
+        $attr_uniquename = $date[0] . "-$type-$landmark:" . ($fmin + 1) . ".." . $fmax;
         $attr_name = $type;
       }      
     }

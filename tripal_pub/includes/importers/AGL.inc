@@ -2,7 +2,8 @@
 /**
  *
  */
-function tripal_pub_remote_alter_form_AGL(&$form, $form_state) {
+function tripal_pub_remote_alter_form_AGL($form, $form_state) {
+
   $num_criteria = $form['num_criteria']['#default_value'];
 
   // So far we haven't been able to get AGL to filter results to only
@@ -15,12 +16,12 @@ function tripal_pub_remote_alter_form_AGL(&$form, $form_state) {
   for($i = 1; $i <= $num_criteria; $i++) {
     unset($form['criteria'][$i]["scope-$i"]['#options']['journal']);
   }
-
+  return $form;
 }
 /**
  *
  */
-function tripal_pub_remote_validate_form_AGL(&$form, $form_state) {
+function tripal_pub_remote_validate_form_AGL($form, $form_state) {
   $days =  trim($form_state['values']["days"]);
   $num_criteria = $form['num_criteria']['#default_value'];
 
@@ -42,6 +43,7 @@ function tripal_pub_remote_validate_form_AGL(&$form, $form_state) {
       form_set_error("search_terms-$i", "Unfortuantely, the AGL importer can only support a single accession at a time. Please remove the others.");
     }
   }
+  return $form;
 }
 /**
  *
@@ -329,9 +331,9 @@ function tripal_pub_remote_search_AGL($search_array, $num_to_retrieve, $pager_id
     );
     yaz_ccl_conf($yazc, $fields);
 
-    if (!yaz_ccl_parse($yazc, $ccl, &$cclresult)) {
+    if (!yaz_ccl_parse($yazc, $ccl, $cclresult)) {
       drupal_set_message('Error parsing search string: ' . $cclresult["errorstring"], "error");
-      watchdog('tripal_pub', 'Error: %errstr', array('%errstr' => $cclresult["errorstring"]), WATCHDOG_ERROR);
+      watchdog('tpub_import', 'Error: %errstr', array('%errstr' => $cclresult["errorstring"]), WATCHDOG_ERROR);
       return array();
     }
     $search_str = $cclresult["rpn"];
@@ -372,6 +374,8 @@ function tripal_pub_AGL_count($search_array) {
       $error_msg .= " $additional";
     }
     drupal_set_message("ERROR preparing search at AGL: ($error_no) $error_msg", "error");
+    watchdog('tpub_import', "ERROR preparing search at AGL: (%error_no) %error_msg",
+              array('%error_no' => $error_no, '%error_msg' => $error_msg), WATCHDOG_ERROR);
     return 0;
   }
   if (!yaz_wait()) {
@@ -382,6 +386,8 @@ function tripal_pub_AGL_count($search_array) {
       $error_msg .= " $additional";
     }
     drupal_set_message("ERROR waiting on search at AGL: ($error_no) $error_msg", "error");
+    watchdog('tpub_import', "ERROR waiting on search at AGL: (%error_no) %error_msg",
+              array('%error_no' => $error_no, '%error_msg' => $error_msg), WATCHDOG_ERROR);
     return 0;
   }
 
@@ -414,6 +420,8 @@ function tripal_pub_AGL_range($search_array, $start = 0, $limit = 10) {
       $error_msg .= " $additional";
     }
     drupal_set_message("ERROR waiting on search at AGL: ($error_no) $error_msg", "error");
+    watchdog('tpub_import', "ERROR waiting on search at AGL: (%error_no) %error_msg",
+              array('%error_no' => $error_no, '%error_msg' => $error_msg), WATCHDOG_ERROR);
     return $pubs;
   }
    
@@ -804,6 +812,20 @@ function tripal_pub_AGL_parse_pubxml($pub_xml) {
   else {
     $pub['Authors'] = $pub['Author List'];	
   }
+
+  // for Title, Abstract, Authors, convert the html entity and remove special unicode chars that are not meant for display
+  $pub['Title'] = preg_replace( '/[\p{So}]/u', '', mb_convert_encoding($pub['Title'], 'UTF-8', 'HTML-ENTITIES'));
+  if (key_exists('Abstract', $pub)) {
+    $pub['Abstract'] =preg_replace( '/[\p{So}]/u', '',mb_convert_encoding($pub['Abstract'], 'UTF-8', 'HTML-ENTITIES'));
+  }
+  $newauths = array();
+  foreach ($pub['Author List'] AS $auth) {
+    foreach($auth AS $k => $v) {
+      $auth[$k] = preg_replace( '/[\p{So}]/u', '',mb_convert_encoding($v, 'UTF-8', 'HTML-ENTITIES'));
+    }
+    array_push($newauths, $auth);
+  }
+  $pub['Author List'] = $newauths;
 
   // build the citation
   $pub['Citation'] = tripal_pub_create_citation($pub);

@@ -9,7 +9,7 @@
 /**
  *
  */
-function tripal_pub_remote_alter_form_PMID(&$form, $form_state) {
+function tripal_pub_remote_alter_form_PMID($form, $form_state) {
   $num_criteria = $form['num_criteria']['#default_value'];
 
   // PubMed doesn't have an 'Abstract' field, so we need to convert the criteria
@@ -17,11 +17,13 @@ function tripal_pub_remote_alter_form_PMID(&$form, $form_state) {
   for($i = 1; $i <= $num_criteria; $i++) {
     $form['criteria'][$i]["scope-$i"]['#options']['abstract'] = 'Abstract/Title';
   }
+
+  return $form;
 }
 /**
  *
  */
-function tripal_pub_remote_validate_form_PMID(&$form, $form_state) {
+function tripal_pub_remote_validate_form_PMID($form, $form_state) {
   $num_criteria = $form['num_criteria']['#default_value'];
 
   for ($i = 1; $i <= $num_criteria; $i++) {
@@ -31,6 +33,7 @@ function tripal_pub_remote_validate_form_PMID(&$form, $form_state) {
       form_set_error("search_terms-$i", "The PubMed accession must be a numeric value, prefixed with 'PMID:' (e.g. PMID:23024789).");
     }
   }
+  return $form;
 }
 /**
  *
@@ -96,6 +99,9 @@ function tripal_pub_remote_search_PMID($search_array, $num_to_retrieve, $pager_i
     elseif ($scope == 'id') {
       $search_str = preg_replace('/PMID:([^\s]*)/', '$1', $search_str);
       $search_str = preg_replace('/\|SCOPE\|/', '[Uid]', $search_str);
+    }
+    else {
+      $search_str = preg_replace('/\|SCOPE\|/', '', $search_str);  
     }
   }
   if ($days) {
@@ -196,6 +202,8 @@ function tripal_pub_PMID_search_init($search_str, $retmax){
   $rfh = fopen($query_url, "r");
   if (!$rfh) {
     drupal_set_message('Could not perform Pubmed query. Cannot connect to Entrez.', 'error');
+    watchdog('tpub_import', "Could not perform Pubmed query. Cannot connect to Entrez.",
+              array(), WATCHDOG_ERROR);
     return 0;
   }
 
@@ -273,6 +281,8 @@ $retmod = 'null', $start = 0, $limit = 10, $args = array()){
   $rfh = fopen($fetch_url, "r");
   if (!$rfh) {
     drupal_set_message('ERROR: Could not perform PubMed query.', 'error');
+    watchdog('tpub_import', "Could not perform PubMed query: %fetch_url.",
+              array('%fetch_url' => $fetch_url), WATCHDOG_ERROR);
     return '';
   }
   $results = '';

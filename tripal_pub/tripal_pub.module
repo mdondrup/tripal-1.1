@@ -6,6 +6,7 @@ require_once "includes/pub_sync.inc";
 require_once "includes/pub_form.inc";
 require_once "includes/pub_importers.inc";
 require_once "includes/pub_search.inc";
+require_once "includes/pub_citation.inc";
 require_once "includes/importers/PMID.inc";
 require_once "includes/importers/AGL.inc";
 /**
@@ -174,6 +175,14 @@ function tripal_pub_menu() {
     'type ' => MENU_CALLBACK,
   );
 
+  $items['admin/tripal/tripal_pub/citation'] = array(
+      'title' => ' Create Citations',
+      'description' => 'Create citations in Chado with Drupal',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('tripal_pub_citation_form'),
+      'access arguments' => array('administer tripal pubs'),
+      'type' => MENU_NORMAL_ITEM,
+  );
 
   return $items;
 }
@@ -193,55 +202,55 @@ function tripal_pub_theme() {
   // node templates
     'tripal_pub_base' => array(
       'arguments' => array('node' => NULL),
-  ),
+    ),
     'tripal_pub_properties' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_authors' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_references' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_relationships' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_featuremaps' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_features' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_libraries' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_projects' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
     'tripal_pub_stocks' => array(
       'arguments' => array('node' => NULL)
-  ),
+    ),
 
-  // instructions page for the pub module
+    // instructions page for the pub module
     'tripal_pub_admin' => array(
       'template' => 'tripal_pub_admin',  
       'arguments' =>  array(NULL),  
       'path' => drupal_get_path('module', 'tripal_pub') . '/theme' 
-      ),
+    ),
 
-      // themed forms
+    // themed forms
     'tripal_pub_importer_setup_form' => array(
-       'arguments' => array('form'),
-      ),
+      'arguments' => array('form'),
+    ),
     'tripal_pub_search_form' => array(
-       'arguments' => array('form'),
-      ),
+      'arguments' => array('form'),
+    ),
     'chado_pub_node_form' => array(
-       'arguments' => array('form'),
-      ),
-      );
+      'arguments' => array('form'),
+    ),
+  );
 
-      return $themes;
+  return $themes;
 }
 
 /**
@@ -274,7 +283,10 @@ function tripal_pub_perm() {
  *  A user object representing the user for whom the operation is to be performed
  *
  *  @return
- *  TRUE
+ *  If the permission for the specified operation is not set then return FALSE. If the
+ *  permission is set then return NULL as this allows other modules to disable
+ *  access.  The only exception is when the $op == 'create'.  We will always 
+ *  return TRUE if the permission is set.
  *
  */
 function chado_pub_access($op, $node, $account ) {
@@ -282,6 +294,7 @@ function chado_pub_access($op, $node, $account ) {
     if (!user_access('create chado_pub content', $account)) {
       return FALSE;
     }
+    return TRUE;
   }
 
   if ($op == 'update') {
@@ -319,6 +332,10 @@ function chado_pub_access($op, $node, $account ) {
  */
 function chado_pub_insert($node) {
 
+	// we need an array suitable for the tripal_pub_create_citation() function
+	// to automatically generate a citation if a uniquename doesn't already exist
+	$pub_arr = array();
+	
   // if a pub_id already exists for this node then it already exists in Chado and
   // we get here because we are syncing the node.  Therefore, we can skip the insert
   // but we always want to set the URL path alias to be the Chado pub ID
@@ -373,8 +390,13 @@ function chado_pub_insert($node) {
 
     // iterate through all of the properties and remove those that really are
     // part of the pub table fields
-    foreach ($properties as $name => $element) {
+    foreach ($properties as $name => $element) {    	    
       $value = trim($element[0]);
+      
+    	// populate our $pub_array for building a citation
+    	$pub_arr[$name] = $value;
+    	
+      // remove properties that are stored in the pub table
       if ($name == "Volume") {
         $volume = $value;
         unset($properties[$name]);
@@ -409,11 +431,20 @@ function chado_pub_insert($node) {
         $cross_refs[] = $value;
       }
     }
-
+    // generate a citation for this pub if one doesn't already exist 
+    if (!$node->uniquename and array_key_exists('Citation', $properties)) {
+    	$pub_type = tripal_cv_get_cvterm_by_id($node->type_id);
+    	$pub_arr['Title'] = $node->pubtitle;
+      $pub_arr['Publication Type'][0] = $pub_type->name;
+      $pub_arr['Year'] = $node->pyear;
+      $node->uniquename = tripal_pub_create_citation($pub_arr);
+      $properties['Citation'][0] = $node->uniquename;
+    }
+    
     // insert the pub record
     $values = array(
       'title'       => trim($node->pubtitle),
-      'series_name' => trim($node->series_name),
+      'series_name' => substr(trim($node->series_name), 0, 255),
       'type_id'     => trim($node->type_id),
       'pyear'       => trim($node->pyear),
       'is_obsolete' => $node->is_obsolete ? 'true' : 'false', 
@@ -422,9 +453,9 @@ function chado_pub_insert($node) {
       'volume'      => $volume,    
       'issue'       => $issue,    
       'pages'       => $pages,
-      'miniref'     => $miniref,        
-      'publisher'   => $publisher,
-      'pubplace'    => $pubplace,
+      'miniref'     => substr($miniref, 0, 255),        
+      'publisher'   => substr($publisher, 0, 255),
+      'pubplace'    => substr($pubplace, 0, 255),
     );
     $pub = tripal_core_chado_insert('pub', $values);
     if (!$pub) {
@@ -471,7 +502,7 @@ function chado_pub_insert($node) {
   else {
     drupal_set_message(t('Unable to add publication.', 'warning'));
     watchdog('tripal_pub', 'Insert publication: Unable to create pub where values: %values',
-    array('%values' => print_r($values, TRUE)), WATCHDOG_WARNING);
+      array('%values' => print_r($values, TRUE)), WATCHDOG_WARNING);
   }
 }
 
@@ -493,6 +524,10 @@ function chado_pub_update($node) {
     // there is no way to handle revisions in Chado but leave
     // this here just to make not we've addressed it.
   }
+  
+  // we need an array suitable for the tripal_pub_create_citation() function
+  // to automatically generate a citation if a uniquename doesn't already exist
+  $pub_arr = array();
 
   // get the publication ID for this publication
   $pub_id = chado_get_id_for_node('pub', $node) ;
@@ -554,6 +589,10 @@ function chado_pub_update($node) {
   // part of the pub table fields
   foreach ($properties as $name => $element) {
     foreach ($element as $index => $value) {
+    	// populate our $pub_array for building a citation
+      $pub_arr[$name] = $value;
+      
+      // remove properties that are stored in the pub table
       if ($name == "Volume") {
         $volume = $value;
         unset($properties[$name]);
@@ -588,6 +627,15 @@ function chado_pub_update($node) {
         $cross_refs[] = $value;
       }
     }
+  }
+  // generate a citation for this pub if one doesn't already exist 
+  if (!$node->uniquename) {
+    $pub_type = tripal_cv_get_cvterm_by_id($node->type_id);
+    $pub_arr['Title'] = $node->pubtitle;
+    $pub_arr['Publication Type'][0] = $pub_type->name;
+    $pub_arr['Year'] = $node->pyear;
+    $node->uniquename = tripal_pub_create_citation($pub_arr);
+    $properties['Citation'][0] = $node->uniquename;
   }
 
   // update the pub record
@@ -774,7 +822,7 @@ function tripal_pub_preprocess_tripal_pub_relationships(&$variables) {
   // query, therefore we will manually perform the query
   $sql = "
     SELECT P.title, P.pub_id, CP.nid, CVT.name as rel_type
-    FROM pub_relationship PR
+    FROM {pub_relationship} PR
       INNER JOIN {pub} P            ON PR.object_id = P.pub_id
       INNER JOIN {cvterm} CVT       ON PR.type_id   = CVT.cvterm_id
       LEFT JOIN public.chado_pub CP ON P.pub_id     = CP.pub_id
@@ -783,7 +831,7 @@ function tripal_pub_preprocess_tripal_pub_relationships(&$variables) {
   $as_subject = chado_query($sql, $pub->pub_id);
   $sql = "
     SELECT P.title, P.pub_id, CP.nid, CVT.name as rel_type
-    FROM pub_relationship PR
+    FROM {pub_relationship} PR
       INNER JOIN {pub} P            ON PR.subject_id = P.pub_id
       INNER JOIN {cvterm} CVT       ON PR.type_id    = CVT.cvterm_id
       LEFT JOIN public.chado_pub CP ON P.pub_id      = CP.pub_id
