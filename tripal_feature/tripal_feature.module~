@@ -1034,7 +1034,7 @@ $sql1 = "select name from chado.feature where feature_id=(select srcfeature_id f
     '#type' => 'textfield',
     '#title' => t('Description'),
     '#required' => FALSE,
-    '#default_value' => $qwerty,
+    
     '#description' => t('Description'),
   );	
 
