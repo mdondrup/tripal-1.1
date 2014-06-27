@@ -503,6 +503,7 @@ function chado_feature_insert($node) {
     'type_id' => $type[0]->cvterm_id,
     'md5checksum' => md5($residues)
   );
+  $longueur=$values['seqlen'];
   $options = array('is_duplicate' => TRUE, 'has_record' => TRUE);
   $exists = tripal_core_chado_select('feature', array('*'), $values, $options);
 
@@ -559,17 +560,17 @@ function chado_feature_insert($node) {
        }
 	
       // Ajout de la localisation
-   $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature[0]->feature_id "));
+   $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=".$feature[0]->feature_id." "));
    if ($verif>0) {
      if (isset($node->locmin)){
-         $locmax=$node->locmin + $values['seqlen'] - 1 ;
+         $locmax=$node->locmin + $longueur - 2;
          $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
    	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature[0]->feature_id);
      }		 
    }	
    else{if (isset($node->locmin)){
-          $locmax=$node->locmin + $values['seqlen'] - 1;
-          $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%s');";
+          $locmax=$node->locmin + $longueur - 2;
+          $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%d');";
 	  chado_query($requetetest,$feature[0]->feature_id,$node->sourceloc,$node->locmin -1,$locmax);
 	}
    }	
@@ -979,12 +980,17 @@ function chado_feature_form($node, $param) {
   );
 
 // get the chromosone
+$sql1 = "select name from chado.feature where feature_id=(select srcfeature_id from featureloc where feature_id='%d');";
+  $resul = chado_query($sql1,$feature->feature_id);
+  $qwerty = db_result($resul);
+ 
  
   $form['sourceloc'] = array(
    '#title'       => t('Source Feature'),
    '#type'        => 'textfield',
    '#description' => t("Choose the Source of the feature."),
-   '#required'    => FALSE,   
+   '#required'    => FALSE,
+   '#default_value' => $qwerty,   
    '#autocomplete_path' => "chrs/auto",
   );
 
@@ -1055,16 +1061,7 @@ $form['locmin']= array(
   );	
 
 	 
-/*
-$form['locmax']= array(
-    '#type' => 'textfield',
-    '#title' => t('Localisation MAX'),
-    '#required' => FALSE,
-    '#default_value' => $fmax,
-    '#description' => t('Saisir la localisation maximale'),
-  );	
-*/
-  
+ 
 
   // get the list of organisms
   $sql = "SELECT * FROM {Organism} ORDER BY genus, species";
@@ -1112,46 +1109,7 @@ $form['locmax']= array(
     '#description' => t('Enter the nucelotide sequences for this feature'),
   );
 
-////////////////////////////////////////////////////////////////////////////////////////////
-// get the analysis properties
-/* 
-  $properties_select = array();
-  $properties_select[] = 'Select a Property';
-  $properties_list = array();
-  $sql = "
-    select cvterm_id,name from chado.cvterm where cvterm_id in (select distinct type_id from chado.featureprop) ;
-  ";
-  $prop_types = chado_query($sql);
-  while ($prop = db_fetch_object($prop_types)) {
-  	$properties_select[$prop->cvterm_id] = $prop->name;
-  	$properties_list[$prop->cvterm_id] = $prop;
-  }
 
-
-  $form['properties'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Properties Details'),
-    '#description' => t('Description of properties'),
-     '#process'  =>array('form_expand_ahah'),
-     );
-
-
-$form['properties']['table']['field1']= array(
-    '#type'          => 'select',
-    '#options'       => $properties_select,    
-  );
- $form['properties']['table']['field2'] = array(
-    '#type' => 'textfield',
-    '#value' =>  '',    
-  );
-$form['properties']['table']['field3'] = array(
-    '#type'         => 'image_button',      
-    '#value'        => t('Add'),
-    '#src'          => drupal_get_path('theme', 'tripal') . '/images/add.png',
-    
-    '#attributes' => array('onClick' => 'return False;'),
-    );
-*/
 
   $checked = '';
   if ($feature->is_obsolete == 't') {
