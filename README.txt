@@ -1,3 +1,7 @@
+WARNING
+--------------
+This is an inofficial fork for a student project.
+
 What is Tripal?
 --------------
 Tripal is a collection of open-source freely available Drupal modules 
