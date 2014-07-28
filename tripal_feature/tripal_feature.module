@@ -201,6 +201,7 @@ function tripal_feature_menu() {
     'access arguments' => array('access chado_feature content'),
     'type' => MENU_CALLBACK,
   );
+//Autopath for Source feature
   $items['chrs/auto'] = array(
       'title' => 'Autocomplete for chromosone',
       'page callback' => 'chrs_autocomplete',
@@ -541,7 +542,7 @@ function chado_feature_insert($node) {
 
 
 	////////////////////
-	if (isset($node->description_id)){
+	if ($node->description_id != ""){
 	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=".$feature[0]->feature_id." and   type_id= $node->description_id;"));
 	  if ($verif>0) {
 	    if (isset($node->desc)){
@@ -559,32 +560,25 @@ function chado_feature_insert($node) {
 	 }
        }
 	
-      // Ajout de la localisation
-   $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=".$feature[0]->feature_id." "));
-   if ($verif>0) {
-     if (isset($node->locmin)){
-         $locmax=$node->locmin + $longueur - 2;
-         $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
-   	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature[0]->feature_id);
-     }		 
-   }	
-   else{if (isset($node->locmin)){
-          $locmax=$node->locmin + $longueur - 2;
-          $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%d');";
-	  chado_query($requetetest,$feature[0]->feature_id,$node->sourceloc,$node->locmin -1,$locmax);
-	}
-   }	
+      // Add localisation
+      if ($node->locmin!=""){
+		$locmax=$node->locmin + $values['seqlen'] -2 ;
+    	 	$requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%d');";
+  	 	chado_query($requetetest,$feature[0]->feature_id,$node->sourceloc,$node->locmin -1,$locmax);
+        
+   	}
+	
 
   }//nodecheck
 }//function
 /*
 *
 *
-*
+*Function for autopath to get all the name from DB
 */
 function chrs_autocomplete($string='') {
   $matches = array();
-  //search table `name` for cities that begin with the letters the user enters in the form
+  //search table `feature` for cities that begin with the letters the user enters in the form
  $sql="SELECT feature_id,name FROM chado.feature WHERE lower(name) LIKE lower('%s%%') order by name limit 10";
  $result = chado_query($sql,$string);
   //$result = db_query_range("SELECT name FROM chado.feature WHERE name LIKE '%s%%'", $string, 0, 10);
@@ -643,7 +637,7 @@ function chado_feature_update($node) {
     $options = array('return_record' => TRUE);
     $status = tripal_core_chado_update('feature', $match, $values, $options);
 
-// Ajout de la description
+// Add description
   if ($node->description_id != ""){
 	$verif=db_result(chado_query("select count(*) from chado.featureprop where feature_id=$feature_id and  type_id= $node->description_id;"));
 	if ($verif>0) {
@@ -659,21 +653,20 @@ function chado_feature_update($node) {
 	}
   }
 
-// Ajout de la localisation
+// Add localisation
     
-    $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature_id "));
-    if ($verif>0) {
-      if (isset($node->locmin)){
-         $locmax=$node->locmin + $values['seqlen'] -2;
-	 $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
-   	 chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature_id);
+    if ($node->locmin != ""){
+	 $verif=db_result(chado_query("select count(*) from chado.featureloc where feature_id=$feature_id "));
+    	 if ($verif>0) {      
+             $locmax=$node->locmin + $values['seqlen'] -2;
+	     $requetetest=" UPDATE chado.featureloc set fmin= '%d', fmax='%d',srcfeature_id=(select feature_id from feature where name='%s') where feature_id='%d' ";
+   	     chado_query($requetetest,$node->locmin -1,$locmax,$node->sourceloc,$feature_id);
          
-      }		 
-    }	
-    else{if (isset($node->locmin)){
-         $locmax=$node->locmin + $values['seqlen'] -2 ;
-    	 $requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%d');";
-  	 chado_query($requetetest,$feature_id,$node->sourceloc,$node->locmin -1,$locmax);
+      	 }		 	
+   	 else{
+		$locmax=$node->locmin + $values['seqlen'] -2 ;
+    	 	$requetetest=" INSERT INTO chado.featureloc(feature_id,srcfeature_id,fmin,fmax) values ('%d',(select feature_id from feature where name='%s'),'%d','%d');";
+  	 	chado_query($requetetest,$feature_id,$node->sourceloc,$node->locmin -1,$locmax);
         }
    }
   	
@@ -898,7 +891,8 @@ function chado_feature_form($node, $param) {
   //Descripion
   $form['desc'] = array(
     '#type' => 'value',
-    '#value' => $desc
+    '#value' => $desc,
+    
   );
 	*/		
   // This field is read when previewing a node
@@ -944,7 +938,8 @@ function chado_feature_form($node, $param) {
     '#required' => TRUE,
     '#default_value' => $node->title,
     '#description' => t('The title must be a unique identifier for this feature.  It is recommended to use a combination of uniquename, organism and feature type in the title as this is guranteed to be unique.'),
-    '#maxlength' => 255
+    '#maxlength' => 255,
+    
   );
 
   $form['uniquename']= array(
@@ -953,7 +948,10 @@ function chado_feature_form($node, $param) {
     '#required' => TRUE,
     '#default_value' => $feature->uniquename,
     '#description' => t('Enter a unique name for this feature.  This name must be unique for the organism and feature type.'),
-    '#maxlength' => 255
+    '#maxlength' => 255,
+    '#multiple'=>TRUE,
+    '#size'=>445,
+    
   );
 
   $form['fname']= array(
@@ -1033,16 +1031,14 @@ $sql1 = "select name from chado.feature where feature_id=(select srcfeature_id f
   $form['desc']= array(
     '#type' => 'textfield',
     '#title' => t('Description'),
-    '#required' => FALSE,
-    '#default_value' => $qwerty,
+    '#required' => FALSE,    
+    '#default_value' =>$qwerty,
     '#description' => t('Description'),
   );	
 
-//  Get the localisation
-
-$requete1="Select fmin,fmax from chado.featureloc where feature_id= %d";
-  
-   $variablenulle1 = chado_query($requete1,$feature->feature_id);
+//  Get  localisation
+$requete1="Select fmin,fmax from chado.featureloc where feature_id= %d";  
+$variablenulle1 = chado_query($requete1,$feature->feature_id);
 
 
 while ($row = db_fetch_object($variablenulle1)){
@@ -1050,13 +1046,15 @@ while ($row = db_fetch_object($variablenulle1)){
 		$fmax=$row->fmax;
 	}
 
-
+if (!empty($fmin)){
+   $fmin=$fmin+1;
+}
 
 $form['locmin']= array(
     '#type' => 'textfield',
     '#title' => t('Localisation MIN'),
     '#required' => FALSE,
-    '#default_value' => $fmin +1,
+    '#default_value' => $fmin,
     '#description' => t('Saisir la localisation minimale'),
   );	
 
